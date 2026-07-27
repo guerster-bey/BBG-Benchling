@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>GenJet Transfection Calculator</title>
+<style>
+  body {
+    font-family: -apple-system, Segoe UI, Arial, sans-serif;
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 16px;
+    color: #1a1a1a;
+  }
+  h2 {
+    font-size: 18px;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: #666;
+    margin-bottom: 16px;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-top: 12px;
+    margin-bottom: 4px;
+  }
+  input[type=number] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+  }
+  .results {
+    margin-top: 20px;
+    padding: 14px;
+    background: #f4f6f8;
+    border: 1px solid #dde2e7;
+    border-radius: 8px;
+  }
+  .results div {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 14px;
+  }
+  .results .label {
+    color: #444;
+  }
+  .results .value {
+    font-weight: 700;
+  }
+  .note {
+    font-size: 11px;
+    color: #888;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h2>GenJet Transfection Reagent Calculator</h2>
+<div class="subtitle">Ratio used: 3 µL GenJet per 1 µg DNA</div>
+
+<label for="samples">Number of samples</label>
+<input type="number" id="samples" min="0" step="1" value="1">
+
+<label for="dnaPerTransfection">DNA per transfection (µg)</label>
+<input type="number" id="dnaPerTransfection" min="0" step="0.1" value="1">
+
+<label for="replicates">Replicates per transfection</label>
+<input type="number" id="replicates" min="0" step="1" value="1">
+
+<label for="overage">Overage / dead volume (%)</label>
+<input type="number" id="overage" min="0" step="1" value="10">
+
+<div class="results">
+  <div><span class="label">Total number of transfections</span><span class="value" id="outTransfections">–</span></div>
+  <div><span class="label">Total DNA (µg)</span><span class="value" id="outDNA">–</span></div>
+  <div><span class="label">GenJet needed, no overage (µL)</span><span class="value" id="outGenJetBase">–</span></div>
+  <div><span class="label">GenJet needed, with overage (µL)</span><span class="value" id="outGenJetOverage">–</span></div>
+</div>
+
+<div class="note">Total transfections = samples × replicates. Total DNA = total transfections × DNA per transfection. GenJet = Total DNA × 3 µL/µg. Overage adds a buffer for pipetting loss.</div>
+
+<script>
+  const samplesEl = document.getElementById('samples');
+  const dnaEl = document.getElementById('dnaPerTransfection');
+  const repsEl = document.getElementById('replicates');
+  const overageEl = document.getElementById('overage');
+
+  const outTransfections = document.getElementById('outTransfections');
+  const outDNA = document.getElementById('outDNA');
+  const outGenJetBase = document.getElementById('outGenJetBase');
+  const outGenJetOverage = document.getElementById('outGenJetOverage');
+
+  const GENJET_RATIO = 3; // µL per µg DNA
+
+  function fmt(n) {
+    if (!isFinite(n)) return '–';
+    return (Math.round(n * 100) / 100).toString();
+  }
+
+  function calculate() {
+    const samples = parseFloat(samplesEl.value) || 0;
+    const dnaPerTransfection = parseFloat(dnaEl.value) || 0;
+    const replicates = parseFloat(repsEl.value) || 0;
+    const overagePct = parseFloat(overageEl.value) || 0;
+
+    const totalTransfections = samples * replicates;
+    const totalDNA = totalTransfections * dnaPerTransfection;
+    const genJetBase = totalDNA * GENJET_RATIO;
+    const genJetOverage = genJetBase * (1 + overagePct / 100);
+
+    outTransfections.textContent = fmt(totalTransfections);
+    outDNA.textContent = fmt(totalDNA) + ' µg';
+    outGenJetBase.textContent = fmt(genJetBase) + ' µL';
+    outGenJetOverage.textContent = fmt(genJetOverage) + ' µL';
+  }
+
+  [samplesEl, dnaEl, repsEl, overageEl].forEach(el => {
+    el.addEventListener('input', calculate);
+  });
+
+  calculate();
+</script>
+
+</body>
+</html>
