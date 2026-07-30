@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Gel / Western Blot Label Maker</title>
+<style>
+  body {
+    font-family: -apple-system, Segoe UI, Arial, sans-serif;
+    max-width: 950px;
+    margin: 0 auto;
+    padding: 16px;
+    color: #1a1a1a;
+  }
+  h2 { font-size: 18px; margin-bottom: 4px; }
+  .subtitle { font-size: 12px; color: #666; margin-bottom: 16px; }
+
+  .controls-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid #e2e2e2;
+  }
+  .control {
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+  }
+  .control label { font-weight: 600; margin-bottom: 4px; }
+  .control input[type=number] {
+    width: 80px;
+    padding: 6px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .control label.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+  }
+
+  button {
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .btn-primary { background: #2563eb; color: white; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-secondary { background: #eef1f5; color: #1a1a1a; border: 1px solid #ccd3db; }
+  .btn-secondary:hover { background: #dde3ea; }
+
+  .well-table-wrap {
+    overflow-x: auto;
+    padding-bottom: 8px;
+    margin-bottom: 6px;
+  }
+  table.well-table {
+    border-collapse: collapse;
+  }
+  table.well-table th, table.well-table td {
+    border: 1px solid #e0e0e0;
+    padding: 4px;
+    text-align: center;
+    vertical-align: top;
+  }
+  table.well-table th {
+    font-size: 11px;
+    color: #555;
+    background: #f8f9fa;
+    white-space: nowrap;
+  }
+  table.well-table input[type=text] {
+    width: 90px;
+    box-sizing: border-box;
+    padding: 5px;
+    font-size: 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .row-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #333;
+    white-space: nowrap;
+    padding: 4px 10px !important;
+    text-align: right !important;
+    background: #f8f9fa;
+  }
+
+  .group-cell {
+    position: relative;
+  }
+  .fill-handle {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    right: 1px;
+    bottom: 1px;
+    background: #2563eb;
+    border: 1px solid #ffffff;
+    border-radius: 1px;
+    cursor: crosshair;
+    z-index: 5;
+  }
+  .group-cell.fill-preview input {
+    background: #dbe6ff;
+  }
+
+  .well-header-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+  }
+  .well-header-controls {
+    display: flex;
+    gap: 2px;
+  }
+  .mini-btn {
+    padding: 1px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    border: 1px solid #ccd3db;
+    background: #ffffff;
+    border-radius: 4px;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .mini-btn:hover { background: #eef1f5; }
+  .mini-btn.danger:hover { background: #fde2e2; border-color: #f3a8a8; }
+
+  .drag-handle {
+    cursor: grab;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    user-select: none;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  .drag-handle.dragging { opacity: 0.4; }
+  .drag-handle.drag-over { background: #dbe6ff; }
+
+  .action-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  #canvasWrap {
+    border: 1px dashed #ccc;
+    border-radius: 8px;
+    padding: 12px;
+    display: none;
+    overflow-x: auto;
+    background: #fafafa;
+  }
+  #labelCanvas { background: white; }
+
+  #copyStatus {
+    font-size: 12px;
+    margin-left: 6px;
+    color: #2563eb;
+  }
+
+  .note {
+    font-size: 11px;
+    color: #888;
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<h2>Gel / Western Blot Label Maker</h2>
+<div class="subtitle">Set up your wells, group shared samples, add per-well treatment labels, then export as an image to paste into Benchling.</div>
+
+<div class="controls-row">
+  <div class="control">
+    <label for="numWells">Number of wells</label>
+    <input type="number" id="numWells" min="1" max="40" value="10">
+  </div>
+  <div class="control">
+    <label for="wellWidth">Well width (px)</label>
+    <input type="number" id="wellWidth" min="40" max="200" value="80">
+  </div>
+  <div class="control">
+    <label for="fontSize">Font size (px)</label>
+    <input type="number" id="fontSize" min="8" max="30" value="14">
+  </div>
+  <div class="control">
+    <label class="checkbox-label"><input type="checkbox" id="showNumbers" checked> Show well numbers</label>
+  </div>
+  <div class="control">
+    <label class="checkbox-label"><input type="checkbox" id="enableGrouping" checked> Group wells by base sample</label>
+  </div>
+  <div class="control">
+    <button class="btn-secondary" id="generateWellsBtn">Reset to N Wells</button>
+  </div>
+</div>
+
+<div class="well-table-wrap">
+  <table class="well-table" id="wellTable">
+    <!-- populated by JS -->
+  </table>
+</div>
+
+<div class="note" style="margin-top:0; margin-bottom:14px;">
+  Use <strong>+◀</strong> / <strong>▶+</strong> on a well to insert a new blank well right before/after it. Drag a well by its <strong>⠿</strong> handle to reorder columns, or use the <strong>◀ ▶</strong> buttons to nudge it one position at a time. Once a well has a group name, a small blue square appears in the corner of its cell — drag that across adjacent wells to fill them with the same group name instead of retyping it.
+</div>
+
+<div class="action-row">
+  <button class="btn-primary" id="renderBtn">Render Label Image</button>
+  <button class="btn-secondary" id="copyBtn" style="display:none;">Copy Image</button>
+  <button class="btn-secondary" id="downloadBtn" style="display:none;">Download PNG</button>
+  <span id="copyStatus"></span>
+</div>
+
+<div id="canvasWrap">
+  <canvas id="labelCanvas"></canvas>
+</div>
+
+<div class="note">
+  <strong>Grouping:</strong> To group wells that share a base sample (e.g. the same cell line across time points), type the same text into the "Group / base sample" cell for each well in that contiguous run — or type it once and drag the blue fill handle in the corner of that cell across the adjacent wells you want to include. Wells with matching, contiguous group text will be bracketed together with the group name shown once above. Leave the group cell blank for wells that don't belong to a group.<br>
+  <strong>Treatment label:</strong> Use this row for anything specific to that individual lane (timepoint, dose, +/- treatment, replicate number, etc).<br>
+  <strong>Copying to Benchling:</strong> "Copy Image" places the rendered label directly on your clipboard so you can paste (Ctrl/Cmd+V) straight into a Benchling notebook entry. If your browser blocks clipboard image access, use "Download PNG" and insert the image file instead.
+</div>
+
+<script>
+  // wells is the single source of truth: array of { group: string, treatment: string }
+  let wells = [];
+  let dragSourceIdx = null;
+  let fillDrag = null; // { sourceIdx, snapshot, lastRange }
+
+  function startFill(idx, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    fillDrag = { sourceIdx: idx, snapshot: wells.map(w => w.group), lastRange: null };
+    document.addEventListener('mousemove', onFillMove);
+    document.addEventListener('mouseup', onFillUp);
+    document.body.style.userSelect = 'none';
+  }
+
+  function onFillMove(e) {
+    if (!fillDrag) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const cell = el ? el.closest('.group-cell') : null;
+    if (!cell) return;
+    const hoverIdx = parseInt(cell.dataset.idx, 10);
+    applyFillPreview(hoverIdx);
+  }
+
+  function applyFillPreview(hoverIdx) {
+    const { sourceIdx, snapshot } = fillDrag;
+    const lo = Math.min(sourceIdx, hoverIdx);
+    const hi = Math.max(sourceIdx, hoverIdx);
+    const sourceValue = snapshot[sourceIdx];
+    wellTable.querySelectorAll('.group-input').forEach(inp => {
+      const i = parseInt(inp.dataset.idx, 10);
+      const cellDiv = inp.closest('.group-cell');
+      if (i >= lo && i <= hi) {
+        inp.value = sourceValue;
+        cellDiv.classList.add('fill-preview');
+      } else {
+        inp.value = snapshot[i];
+        cellDiv.classList.remove('fill-preview');
+      }
+    });
+    fillDrag.lastRange = [lo, hi];
+  }
+
+  function onFillUp() {
+    if (!fillDrag) return;
+    const { sourceIdx, snapshot, lastRange } = fillDrag;
+    const sourceValue = snapshot[sourceIdx];
+    if (lastRange) {
+      const [lo, hi] = lastRange;
+      for (let i = lo; i <= hi; i++) {
+        wells[i].group = sourceValue;
+      }
+    }
+    document.removeEventListener('mousemove', onFillMove);
+    document.removeEventListener('mouseup', onFillUp);
+    document.body.style.userSelect = '';
+    fillDrag = null;
+    rebuildTable();
+  }
+
+  const numWellsInput = document.getElementById('numWells');
+  const wellWidthInput = document.getElementById('wellWidth');
+  const fontSizeInput = document.getElementById('fontSize');
+  const showNumbersInput = document.getElementById('showNumbers');
+  const enableGroupingInput = document.getElementById('enableGrouping');
+  const generateWellsBtn = document.getElementById('generateWellsBtn');
+  const wellTable = document.getElementById('wellTable');
+  const renderBtn = document.getElementById('renderBtn');
+  const copyBtn = document.getElementById('copyBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const canvasWrap = document.getElementById('canvasWrap');
+  const canvas = document.getElementById('labelCanvas');
+  const copyStatus = document.getElementById('copyStatus');
+
+  function resetWells(n) {
+    wells = Array.from({ length: n }, () => ({ group: '', treatment: '' }));
+    rebuildTable();
+    hideCanvas();
+  }
+
+  function insertWellAt(idx) {
+    wells.splice(idx, 0, { group: '', treatment: '' });
+    rebuildTable();
+  }
+
+  function deleteWellAt(idx) {
+    if (wells.length <= 1) return;
+    wells.splice(idx, 1);
+    rebuildTable();
+  }
+
+  function moveWell(fromIdx, toIdx) {
+    if (toIdx < 0 || toIdx >= wells.length || fromIdx === toIdx) return;
+    const item = wells.splice(fromIdx, 1)[0];
+    wells.splice(toIdx, 0, item);
+    rebuildTable();
+  }
+
+  function hideCanvas() {
+    canvasWrap.style.display = 'none';
+    copyBtn.style.display = 'none';
+    downloadBtn.style.display = 'none';
+    copyStatus.textContent = '';
+  }
+
+  function rebuildTable() {
+    wellTable.innerHTML = '';
+    const n = wells.length;
+
+    const headerRow = document.createElement('tr');
+    let headerHtml = '<th class="row-label">Well</th>';
+    for (let i = 0; i < n; i++) {
+      headerHtml += `
+        <th>
+          <div class="well-header-inner">
+            <div class="well-header-controls">
+              <button class="mini-btn" data-action="insert-before" data-idx="${i}" title="Insert well before">+◀</button>
+              <button class="mini-btn danger" data-action="delete" data-idx="${i}" title="Delete this well">×</button>
+              <button class="mini-btn" data-action="insert-after" data-idx="${i}" title="Insert well after">▶+</button>
+            </div>
+            <div class="drag-handle" draggable="true" data-idx="${i}" title="Drag to reorder">⠿ Well ${i + 1}</div>
+            <div class="well-header-controls">
+              <button class="mini-btn" data-action="move-left" data-idx="${i}" title="Move left">◀</button>
+              <button class="mini-btn" data-action="move-right" data-idx="${i}" title="Move right">▶</button>
+            </div>
+          </div>
+        </th>`;
+    }
+    headerRow.innerHTML = headerHtml;
+    wellTable.appendChild(headerRow);
+
+    if (enableGroupingInput.checked) {
+      const groupRow = document.createElement('tr');
+      let groupHtml = '<td class="row-label">Group / base sample</td>';
+      for (let i = 0; i < n; i++) {
+        const hasValue = wells[i].group.trim() !== '';
+        groupHtml += `<td class="group-cell" data-idx="${i}"><input type="text" class="group-input" data-idx="${i}" value="${escapeAttr(wells[i].group)}">${hasValue ? `<div class="fill-handle" data-idx="${i}" title="Drag to fill adjacent wells"></div>` : ''}</td>`;
+      }
+      groupRow.innerHTML = groupHtml;
+      wellTable.appendChild(groupRow);
+    }
+
+    const treatmentRow = document.createElement('tr');
+    let treatmentHtml = '<td class="row-label">Treatment / well label</td>';
+    for (let i = 0; i < n; i++) {
+      treatmentHtml += `<td><input type="text" class="treatment-input" data-idx="${i}" value="${escapeAttr(wells[i].treatment)}"></td>`;
+    }
+    treatmentRow.innerHTML = treatmentHtml;
+    wellTable.appendChild(treatmentRow);
+
+    attachTableListeners();
+  }
+
+  function escapeAttr(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+
+  function attachTableListeners() {
+    wellTable.querySelectorAll('.group-input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        const idx = parseInt(inp.dataset.idx, 10);
+        wells[idx].group = inp.value;
+        const cell = inp.closest('.group-cell');
+        let handle = cell.querySelector('.fill-handle');
+        if (inp.value.trim() !== '') {
+          if (!handle) {
+            handle = document.createElement('div');
+            handle.className = 'fill-handle';
+            handle.dataset.idx = idx;
+            handle.title = 'Drag to fill adjacent wells';
+            handle.addEventListener('mousedown', (e) => startFill(idx, e));
+            cell.appendChild(handle);
+          }
+        } else if (handle) {
+          handle.remove();
+        }
+      });
+    });
+
+    wellTable.querySelectorAll('.fill-handle').forEach(handle => {
+      handle.addEventListener('mousedown', (e) => startFill(parseInt(handle.dataset.idx, 10), e));
+    });
+    wellTable.querySelectorAll('.treatment-input').forEach(inp => {
+      inp.addEventListener('input', () => {
+        wells[parseInt(inp.dataset.idx, 10)].treatment = inp.value;
+      });
+    });
+
+    wellTable.querySelectorAll('.mini-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        const action = btn.dataset.action;
+        if (action === 'insert-before') insertWellAt(idx);
+        else if (action === 'insert-after') insertWellAt(idx + 1);
+        else if (action === 'delete') deleteWellAt(idx);
+        else if (action === 'move-left') moveWell(idx, idx - 1);
+        else if (action === 'move-right') moveWell(idx, idx + 1);
+      });
+    });
+
+    wellTable.querySelectorAll('.drag-handle').forEach(handle => {
+      handle.addEventListener('dragstart', (e) => {
+        dragSourceIdx = parseInt(handle.dataset.idx, 10);
+        handle.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(dragSourceIdx));
+      });
+      handle.addEventListener('dragend', () => {
+        handle.classList.remove('dragging');
+        wellTable.querySelectorAll('.drag-handle').forEach(h => h.classList.remove('drag-over'));
+      });
+      handle.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        handle.classList.add('drag-over');
+      });
+      handle.addEventListener('dragleave', () => {
+        handle.classList.remove('drag-over');
+      });
+      handle.addEventListener('drop', (e) => {
+        e.preventDefault();
+        handle.classList.remove('drag-over');
+        const targetIdx = parseInt(handle.dataset.idx, 10);
+        if (dragSourceIdx !== null && dragSourceIdx !== targetIdx) {
+          moveWell(dragSourceIdx, targetIdx);
+        }
+        dragSourceIdx = null;
+      });
+    });
+  }
+
+  generateWellsBtn.addEventListener('click', () => {
+    let n = parseInt(numWellsInput.value, 10);
+    if (!n || n < 1) n = 1;
+    if (n > 40) n = 40;
+    numWellsInput.value = n;
+    resetWells(n);
+  });
+
+  enableGroupingInput.addEventListener('change', () => {
+    rebuildTable();
+    hideCanvas();
+  });
+
+  resetWells(parseInt(numWellsInput.value, 10));
+
+  function wrapTextLines(ctx, text, maxWidth) {
+    if (!text) return [];
+    const words = text.split(' ');
+    const lines = [];
+    let currentLine = words[0] || '';
+    for (let i = 1; i < words.length; i++) {
+      const testLine = currentLine + ' ' + words[i];
+      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = words[i];
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    return lines;
+  }
+
+  function getGroupRuns(groups) {
+    const runs = [];
+    let i = 0;
+    while (i < groups.length) {
+      const val = groups[i].trim();
+      if (!val) { i++; continue; }
+      let j = i;
+      while (j + 1 < groups.length && groups[j + 1].trim() === val) j++;
+      runs.push({ start: i, end: j, text: val });
+      i = j + 1;
+    }
+    return runs;
+  }
+
+  function renderLabelImage() {
+    const n = wells.length;
+    const groups = enableGroupingInput.checked ? wells.map(w => w.group) : wells.map(() => '');
+    const treatments = wells.map(w => w.treatment);
+
+    const wellWidth = parseInt(wellWidthInput.value, 10) || 80;
+    const fontSize = parseInt(fontSizeInput.value, 10) || 14;
+    const showNumbers = showNumbersInput.checked;
+    const scale = 2;
+
+    const lineHeight = Math.round(fontSize * 1.25);
+    const cellPad = 6;
+    const maxTextWidth = wellWidth - cellPad * 2;
+
+    const measureCanvas = document.createElement('canvas');
+    const mctx = measureCanvas.getContext('2d');
+    mctx.font = `600 ${fontSize}px -apple-system, Segoe UI, Arial, sans-serif`;
+
+    const groupRuns = getGroupRuns(groups);
+    let maxGroupLines = 0;
+    const groupRunLines = groupRuns.map(run => {
+      const runWidth = wellWidth * (run.end - run.start + 1) - cellPad * 2;
+      const lines = wrapTextLines(mctx, run.text, runWidth);
+      maxGroupLines = Math.max(maxGroupLines, lines.length);
+      return lines;
+    });
+
+    let maxTreatmentLines = 0;
+    const treatmentLinesArr = treatments.map(t => {
+      const lines = wrapTextLines(mctx, t, maxTextWidth);
+      maxTreatmentLines = Math.max(maxTreatmentLines, lines.length);
+      return lines;
+    });
+
+    const topMargin = 14;
+    const bottomMargin = 14;
+    const sideMargin = 14;
+
+    const groupSectionHeight = groupRuns.length > 0
+      ? (maxGroupLines * lineHeight) + 10 + 6
+      : 0;
+    const treatmentSectionHeight = Math.max(maxTreatmentLines, 1) * lineHeight + 8;
+    const numberSectionHeight = showNumbers ? lineHeight + 6 : 0;
+
+    const totalWidth = n * wellWidth + sideMargin * 2;
+    const totalHeight = topMargin + groupSectionHeight + treatmentSectionHeight + numberSectionHeight + bottomMargin;
+
+    canvas.width = totalWidth * scale;
+    canvas.height = totalHeight * scale;
+    canvas.style.width = totalWidth + 'px';
+    canvas.style.height = totalHeight + 'px';
+
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#111111';
+
+    let cursorY = topMargin;
+
+    if (groupRuns.length > 0) {
+      ctx.font = `700 ${fontSize}px -apple-system, Segoe UI, Arial, sans-serif`;
+      groupRuns.forEach((run, idx) => {
+        const runStartX = sideMargin + run.start * wellWidth;
+        const runEndX = sideMargin + (run.end + 1) * wellWidth;
+        const centerX = (runStartX + runEndX) / 2;
+        const lines = groupRunLines[idx];
+        lines.forEach((line, li) => {
+          ctx.fillText(line, centerX, cursorY + fontSize + li * lineHeight);
+        });
+        const bracketY = cursorY + lines.length * lineHeight + 4;
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(runStartX + 4, bracketY);
+        ctx.lineTo(runEndX - 4, bracketY);
+        ctx.moveTo(runStartX + 4, bracketY - 4);
+        ctx.lineTo(runStartX + 4, bracketY + 4);
+        ctx.moveTo(runEndX - 4, bracketY - 4);
+        ctx.lineTo(runEndX - 4, bracketY + 4);
+        ctx.stroke();
+      });
+      cursorY += groupSectionHeight;
+    }
+
+    ctx.font = `400 ${fontSize}px -apple-system, Segoe UI, Arial, sans-serif`;
+    for (let i = 0; i < n; i++) {
+      const centerX = sideMargin + i * wellWidth + wellWidth / 2;
+      const lines = treatmentLinesArr[i];
+      lines.forEach((line, li) => {
+        ctx.fillText(line, centerX, cursorY + fontSize + li * lineHeight);
+      });
+    }
+    cursorY += treatmentSectionHeight;
+
+    if (showNumbers) {
+      ctx.font = `400 ${Math.round(fontSize * 0.8)}px -apple-system, Segoe UI, Arial, sans-serif`;
+      ctx.fillStyle = '#555555';
+      for (let i = 0; i < n; i++) {
+        const centerX = sideMargin + i * wellWidth + wellWidth / 2;
+        ctx.fillText(String(i + 1), centerX, cursorY + fontSize * 0.8);
+      }
+    }
+
+    canvasWrap.style.display = 'block';
+    copyBtn.style.display = 'inline-block';
+    downloadBtn.style.display = 'inline-block';
+    copyStatus.textContent = '';
+  }
+
+  renderBtn.addEventListener('click', renderLabelImage);
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      canvas.toBlob(async (blob) => {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          copyStatus.textContent = 'Copied! Paste into Benchling with Ctrl/Cmd+V.';
+        } catch (err) {
+          copyStatus.textContent = 'Clipboard copy blocked by browser — use Download PNG instead.';
+        }
+      }, 'image/png');
+    } catch (err) {
+      copyStatus.textContent = 'Copy failed — use Download PNG instead.';
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.download = 'gel_labels.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  });
+</script>
+
+</body>
+</html>
