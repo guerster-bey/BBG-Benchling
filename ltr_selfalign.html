@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Align &middot; LTR &amp; terminal-repeat finder</title>
+<style>
+ :root{--bg:#f6f7f9;--panel:#fff;--ink:#1b2430;--muted:#687385;--line:#dfe3e8;
+       --fwd:#1f6feb;--rev:#d1495b;--ltr:#2a9d5c;--accent:#1f6feb;}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--ink);
+      font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+ header{background:var(--panel);border-bottom:1px solid var(--line);padding:14px 22px;}
+ header h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
+ header p{margin:3px 0 0;color:var(--muted);font-size:12.5px}
+ .wrap{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px;padding:18px 22px;align-items:start}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;margin-bottom:16px}
+ .card h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:650}
+ textarea{width:100%;height:150px;font:11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+          border:1px solid var(--line);border-radius:6px;padding:8px;resize:vertical;background:#fcfcfd;color:var(--ink)}
+ label{display:block;font-size:12px;color:var(--muted);margin:9px 0 3px}
+ input[type=number],select{width:100%;padding:5px 7px;border:1px solid var(--line);border-radius:5px;
+          font:13px ui-monospace,Menlo,monospace;background:#fff;color:var(--ink)}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+ button{font:600 13px inherit;padding:7px 13px;border-radius:6px;border:1px solid var(--line);
+        background:#fff;color:var(--ink);cursor:pointer}
+ button:hover{background:#f0f2f5}
+ button.primary{background:var(--accent);border-color:var(--accent);color:#fff;width:100%;padding:9px}
+ button.primary:hover{filter:brightness(1.07)}
+ .row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+ .chip{font-size:11.5px;padding:3px 8px;border:1px solid var(--line);border-radius:20px;background:#fff;cursor:pointer}
+ .chip:hover{border-color:var(--accent);color:var(--accent)}
+ .status{font-size:12px;color:var(--muted);margin-top:8px;min-height:17px}
+ .verdict{border-left:4px solid var(--ltr);padding:12px 14px;border-radius:6px;background:#f2faf5}
+ .verdict.none{border-left-color:#c9ced6;background:#f7f8fa}
+ .verdict h3{margin:0 0 7px;font-size:15px}
+ .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:7px 16px;font-size:12.5px}
+ .kv div span{color:var(--muted)}
+ .kv b{font-family:ui-monospace,Menlo,monospace;font-weight:600}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+ th{color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px;
+    cursor:pointer;user-select:none;position:sticky;top:0;background:var(--panel)}
+ td.num{font-family:ui-monospace,Menlo,monospace}
+ tbody tr:hover{background:#f5f8ff}
+ tbody tr.sel{background:#eaf2ff}
+ .tblwrap{max-height:320px;overflow:auto}
+ .plus{color:var(--fwd);font-weight:700}.minus{color:var(--rev);font-weight:700}
+ canvas{display:block;max-width:100%}
+ #dotwrap{position:relative;display:inline-block}
+ #hover{position:absolute;pointer-events:none;background:rgba(27,36,48,.9);color:#fff;font:11px ui-monospace,Menlo,monospace;
+        padding:3px 6px;border-radius:4px;display:none;white-space:nowrap;transform:translate(10px,-26px)}
+ pre.aln{font:11.5px/1.35 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:#fbfbfd;border:1px solid var(--line);
+         border-radius:6px;padding:10px;overflow-x:auto;max-height:360px;margin:0}
+ .legend{font-size:11.5px;color:var(--muted);display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+ .sw{display:inline-block;width:11px;height:3px;vertical-align:middle;margin-right:4px}
+ .note{font-size:11.5px;color:var(--muted);margin-top:8px}
+ details summary{cursor:pointer;color:var(--muted);font-size:12px}
+ .hide{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Self-Align &mdash; LTR / terminal-repeat finder</h1>
+  <p>Aligns a nucleotide sequence against itself (both strands) to find direct and inverted repeats, and calls long terminal repeats. Runs entirely in your browser; nothing is uploaded.</p>
+</header>
+
+<div class="wrap">
+ <div>
+  <div class="card">
+    <h2>Sequence</h2>
+    <textarea id="seqin" spellcheck="false" placeholder="Paste FASTA or raw sequence&#10;&gt;my_element&#10;TGGAAGGGCTAATTCACTCC..."></textarea>
+    <div class="row" style="margin-top:8px">
+      <input type="file" id="file" accept=".fa,.fasta,.fna,.txt,.seq" class="hide">
+      <button class="chip" onclick="document.getElementById('file').click()">Load file</button>
+      <button class="chip" id="exHIV">Example: HIV-1 HXB2</button>
+      <button class="chip" id="clr">Clear</button>
+    </div>
+    <div id="reclist" class="hide"><label>Record</label><select id="recsel"></select></div>
+    <div class="status" id="seqstat"></div>
+  </div>
+
+  <div class="card">
+    <h2>Parameters</h2>
+    <label>Preset</label>
+    <select id="preset">
+      <option value="retro">Retroviral / LTR element (default)</option>
+      <option value="sens">Sensitive &mdash; diverged repeats</option>
+      <option value="big">Large genome &mdash; long repeats only</option>
+      <option value="custom">Custom</option>
+    </select>
+    <div class="grid2">
+      <div><label>Word size (k)</label><input type="number" id="k" value="12" min="6" max="15"></div>
+      <div><label>Min repeat length</label><input type="number" id="minLen" value="50" min="10" step="10"></div>
+      <div><label>Min identity (%)</label><input type="number" id="minIdent" value="75" min="50" max="100"></div>
+      <div><label>Terminal tolerance (bp)</label><input type="number" id="termTol" value="50" min="0" step="10"></div>
+      <div><label>Max gap (chaining)</label><input type="number" id="maxGap" value="300" min="0" step="50"></div>
+      <div><label>Max indel (chaining)</label><input type="number" id="maxIndel" value="150" min="0" step="25"></div>
+      <div><label>X-drop</label><input type="number" id="xdrop" value="30" min="5" step="5"></div>
+      <div><label>Max hits / word</label><input type="number" id="maxHits" value="200" min="5" step="25"></div>
+      <div style="grid-column:1/3"><label>Strands</label>
+        <select id="strand">
+          <option value="both">Both &mdash; direct + inverted repeats</option>
+          <option value="fwd">Forward only &mdash; direct repeats</option>
+          <option value="rev">Reverse only &mdash; inverted repeats</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-top:12px"><button class="primary" id="run">Run self-alignment</button></div>
+    <div class="status" id="status"></div>
+    <div class="note">Terminal tolerance = how many bp from each end an LTR copy may start/stop. Raise it for assemblies with ragged ends.</div>
+  </div>
+
+  <div class="card">
+    <h2>Export</h2>
+    <div class="row">
+      <button class="chip" id="dlCsv">Repeats CSV</button>
+      <button class="chip" id="dlBed">BED</button>
+      <button class="chip" id="dlFa">LTR FASTA</button>
+      <button class="chip" id="dlAln">Alignment TXT</button>
+      <button class="chip" id="dlPng">Dot plot PNG</button>
+    </div>
+  </div>
+ </div>
+
+ <div>
+  <div class="card" id="verdictCard"><h2>Terminal repeat call</h2>
+    <div class="verdict none" id="verdict"><h3>No analysis yet</h3>
+    <div style="font-size:12.5px;color:var(--muted)">Paste a sequence and run the self-alignment.</div></div>
+    <div id="track" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card"><h2>Self dot plot</h2>
+    <div id="dotwrap"><canvas id="dot" width="720" height="720"></canvas><div id="hover"></div></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--fwd)"></i>direct repeat (same strand)</span>
+      <span><i class="sw" style="background:var(--rev)"></i>inverted repeat (reverse complement)</span>
+      <span><i class="sw" style="background:var(--ltr);height:5px"></i>terminal repeat call</span>
+      <span><i class="sw" style="background:#c9ced6"></i>main diagonal (self)</span>
+    </div>
+    <div class="note">Drag to zoom into a region, double-click to reset. Both halves are drawn, so the plot is symmetric about the main diagonal.</div>
+  </div>
+
+  <div class="card"><h2>Repeats found</h2>
+    <div class="tblwrap"><table id="tbl"><thead><tr>
+      <th data-s="score">Score</th><th data-s="strand">Str</th><th data-s="aStart">Copy 1</th>
+      <th data-s="bStart">Copy 2</th><th data-s="len">Len</th><th data-s="identity">Ident</th>
+      <th data-s="nParts">Blocks</th><th data-s="dist">Spacing</th></tr></thead><tbody></tbody></table></div>
+    <div class="note" id="tblnote"></div>
+  </div>
+
+  <div class="card"><h2>5&prime; vs 3&prime; LTR alignment</h2>
+    <pre class="aln" id="aln">&mdash;</pre>
+  </div>
+ </div>
+</div>
+
+<script id="coresrc">
+/* ltr_core.js - self-alignment / terminal-repeat core (no DOM) */
+(function (root) {
+'use strict';
+
+/* ---------- sequence handling ---------- */
+const CODE = new Int8Array(256).fill(-1);
+"Aa".split('').forEach(c=>CODE[c.charCodeAt(0)]=0);
+"Cc".split('').forEach(c=>CODE[c.charCodeAt(0)]=1);
+"Gg".split('').forEach(c=>CODE[c.charCodeAt(0)]=2);
+"TtUu".split('').forEach(c=>CODE[c.charCodeAt(0)]=3);
+
+function parseFasta(text){
+  const recs=[]; let cur=null;
+  for(const raw of String(text).split(/\r?\n/)){
+    const line=raw.trim();
+    if(!line) continue;
+    if(line[0]==='>'||line[0]===';'){
+      cur={name:line.slice(1).trim()||('seq'+(recs.length+1)), parts:[]}; recs.push(cur);
+    } else {
+      if(!cur){cur={name:'sequence', parts:[]}; recs.push(cur);}
+      cur.parts.push(line);
+    }
+  }
+  return recs.map(r=>{
+    const s=r.parts.join('').replace(/[^A-Za-z]/g,'').toUpperCase().replace(/U/g,'T');
+    return {name:r.name, seq:s, len:s.length};
+  }).filter(r=>r.len>0);
+}
+
+function encode(seq){
+  const n=seq.length, out=new Uint8Array(n);
+  for(let i=0;i<n;i++){ const c=CODE[seq.charCodeAt(i)]; out[i]= c<0?4:c; }
+  return out;
+}
+function revcompStr(seq){
+  const map={A:'T',C:'G',G:'C',T:'A',N:'N'};
+  let out=''; for(let i=seq.length-1;i>=0;i--){ out += (map[seq[i]]||'N'); }
+  return out;
+}
+function gcContent(seq){
+  let gc=0,n=0;
+  for(let i=0;i<seq.length;i++){const c=seq[i]; if(c==='G'||c==='C'){gc++;n++;} else if(c==='A'||c==='T'){n++;}}
+  return n? gc/n : 0;
+}
+
+/* ---------- seed index: kmer matches between A and B ----------
+   returns Map: diagonal d = (start in B) - (start in A) -> array of B starts */
+function seedDiagonals(a, b, k, maxHits, selfMode){
+  const nA=a.length, nB=b.length, mask=(1<<(2*k))-1;
+  const last=new Map();
+  const nextArr=new Int32Array(Math.max(nA,1)).fill(-1);
+  let code=0, run=0;
+  for(let i=0;i<nA;i++){
+    const c=a[i];
+    if(c>3){ run=0; code=0; continue; }
+    code=((code<<2)|c)&mask; run++;
+    if(run>=k){ const s=i-k+1; nextArr[s]= last.has(code)?last.get(code):-1; last.set(code,s); }
+  }
+  const diags=new Map(); let nSeeds=0;
+  code=0; run=0;
+  for(let j=0;j<nB;j++){
+    const c=b[j];
+    if(c>3){ run=0; code=0; continue; }
+    code=((code<<2)|c)&mask; run++;
+    if(run<k) continue;
+    const s=j-k+1;
+    let p=last.has(code)?last.get(code):-1, hits=0;
+    while(p>=0 && hits<maxHits){
+      if(!selfMode || p<s){
+        const d=s-p;
+        let arr=diags.get(d); if(!arr){arr=[]; diags.set(d,arr);}
+        arr.push(s); nSeeds++;
+      }
+      p=nextArr[p]; hits++;
+    }
+  }
+  return {diags, nSeeds};
+}
+
+/* ---------- ungapped X-drop extension around a seed span ---------- */
+function extendUngapped(a,b,ai,aj,bi,bj,par){
+  const match=par.match, mismatch=par.mismatch, xdrop=par.xdrop;
+  let score=0, matches=0;
+  for(let x=0;x<aj-ai;x++){
+    const ca=a[ai+x], cb=b[bi+x];
+    if(ca<4&&cb<4&&ca===cb){score+=match; matches++;} else score+=mismatch;
+  }
+  let best=score, bestOff=0, cur=score, m=0, bestM=0, off=0;
+  while(aj+off<a.length && bj+off<b.length){
+    const ca=a[aj+off], cb=b[bj+off];
+    if(ca<4&&cb<4&&ca===cb){cur+=match; m++;} else cur+=mismatch;
+    off++;
+    if(cur>best){best=cur; bestOff=off; bestM=m;}
+    if(best-cur>xdrop) break;
+  }
+  const rOff=bestOff; matches+=bestM; score=best;
+  best=score; bestOff=0; cur=score; m=0; bestM=0; off=0;
+  while(ai-off-1>=0 && bi-off-1>=0){
+    const ca=a[ai-off-1], cb=b[bi-off-1];
+    if(ca<4&&cb<4&&ca===cb){cur+=match; m++;} else cur+=mismatch;
+    off++;
+    if(cur>best){best=cur; bestOff=off; bestM=m;}
+    if(best-cur>xdrop) break;
+  }
+  const lOff=bestOff; matches+=bestM; score=best;
+  const A0=ai-lOff, A1=aj+rOff, B0=bi-lOff, B1=bj+rOff;
+  return {aStart:A0, aEnd:A1, bStart:B0, bEnd:B1, score:score, matches:matches, len:A1-A0};
+}
+
+/* ---------- HSP discovery ---------- */
+function findHSPs(a,b,par,selfMode){
+  const k=par.k;
+  const sd=seedDiagonals(a,b,k,par.maxHits,selfMode);
+  const hsps=[];
+  const seedGap = par.seedGap!=null ? par.seedGap : 3*k;
+  for(const ent of sd.diags){
+    const d=ent[0], arr=ent[1];
+    arr.sort((x,y)=>x-y);
+    let gs=arr[0], ge=arr[0]+k;
+    for(let t=1;t<=arr.length;t++){
+      const s=(t<arr.length)?arr[t]:null;
+      if(s!==null && s-ge<=seedGap){ ge=Math.max(ge,s+k); continue; }
+      const h=extendUngapped(a,b,gs-d,ge-d,gs,ge,par);
+      h.diag=d;
+      if(h.len>=par.minLen && h.matches/h.len>=par.minIdent) hsps.push(h);
+      if(s!==null){ gs=s; ge=s+k; }
+    }
+  }
+  hsps.sort((x,y)=>y.score-x.score);
+  const kept=[]; const byDiag=new Map();
+  for(const h of hsps){
+    const lst=byDiag.get(h.diag)||[];
+    let dup=false;
+    for(const o of lst){ if(h.aStart>=o.aStart-k && h.aEnd<=o.aEnd+k){dup=true;break;} }
+    if(dup) continue;
+    lst.push(h); byDiag.set(h.diag,lst); kept.push(h);
+    if(kept.length>=par.maxHSPs) break;
+  }
+  return {hsps:kept, nSeeds:sd.nSeeds, nDiag:sd.diags.size};
+}
+
+/* ---------- chaining: join collinear HSPs across small indels ---------- */
+function chainHSPs(hsps, par){
+  const n=Math.min(hsps.length, par.maxChainHSPs||1500);
+  const H=hsps.slice().sort((x,y)=>y.score-x.score).slice(0,n)
+               .sort((x,y)=>x.aStart-y.aStart||x.bStart-y.bStart);
+  const N=H.length;
+  const best=new Float64Array(N), from=new Int32Array(N).fill(-1);
+  for(let j=0;j<N;j++){
+    best[j]=H[j].score;
+    for(let i=0;i<j;i++){
+      const gapA=H[j].aStart-H[i].aEnd, gapB=H[j].bStart-H[i].bEnd;
+      if(gapA< -par.k || gapB< -par.k) continue;
+      if(gapA>par.maxGap || gapB>par.maxGap) continue;
+      const indel=Math.abs(gapA-gapB);
+      if(indel>par.maxIndel) continue;
+      const cand=best[i]+H[j].score-(indel?(par.gapOpen+par.gapExtend*indel):0)
+                 -Math.max(0,Math.min(gapA,gapB))*0.5;
+      if(cand>best[j]){best[j]=cand; from[j]=i;}
+    }
+  }
+  const used=new Uint8Array(N);
+  const order=Array.from({length:N},(_,i)=>i).sort((x,y)=>best[y]-best[x]);
+  const chains=[];
+  for(const st of order){
+    if(used[st]) continue;
+    const idx=[]; let cur=st;
+    while(cur>=0 && !used[cur]){ idx.push(cur); used[cur]=1; cur=from[cur]; }
+    idx.reverse();
+    const parts=idx.map(i=>H[i]);
+    const matches=parts.reduce((s,h)=>s+h.matches,0);
+    const alnLen=parts.reduce((s,h)=>s+h.len,0);
+    chains.push({
+      aStart:parts[0].aStart, aEnd:parts[parts.length-1].aEnd,
+      bStart:parts[0].bStart, bEnd:parts[parts.length-1].bEnd,
+      score:best[st], matches:matches, alnLen:alnLen, identity:matches/alnLen,
+      nParts:parts.length, parts:parts
+    });
+  }
+  chains.sort((x,y)=>y.score-x.score);
+  return chains;
+}
+
+/* ---------- Smith-Waterman, affine gaps, with traceback ---------- */
+function smithWaterman(s1,s2,opt){
+  const o=Object.assign({match:2,mismatch:-3,gapOpen:5,gapExtend:2,maxCells:9e6},opt||{});
+  const n=s1.length, m=s2.length;
+  if(!n||!m||n*m>o.maxCells) return null;
+  const W=m+1;
+  const H=new Int32Array((n+1)*W), E=new Int32Array((n+1)*W), F=new Int32Array((n+1)*W);
+  const TB=new Uint8Array((n+1)*W);
+  let bi=0,bj=0,bs=0;
+  for(let i=1;i<=n;i++){
+    const ci=s1.charCodeAt(i-1);
+    for(let j=1;j<=m;j++){
+      const idx=i*W+j;
+      E[idx]=Math.max(E[idx-1]-o.gapExtend, H[idx-1]-o.gapOpen-o.gapExtend);
+      F[idx]=Math.max(F[idx-W]-o.gapExtend, H[idx-W]-o.gapOpen-o.gapExtend);
+      const sc=(ci===s2.charCodeAt(j-1) && ci!==78)?o.match:o.mismatch;
+      const diag=H[idx-W-1]+sc;
+      let v=0, t=0;
+      if(diag>v){v=diag;t=1;}
+      if(E[idx]>v){v=E[idx];t=2;}
+      if(F[idx]>v){v=F[idx];t=3;}
+      H[idx]=v; TB[idx]=t;
+      if(v>bs){bs=v;bi=i;bj=j;}
+    }
+  }
+  let i=bi,j=bj; const Aa=[],Bb=[],Mm=[];
+  while(i>0&&j>0&&H[i*W+j]>0){
+    const t=TB[i*W+j];
+    if(t===1){Aa.push(s1[i-1]); Bb.push(s2[j-1]); Mm.push(s1[i-1]===s2[j-1]?'|':' '); i--; j--;}
+    else if(t===2){Aa.push('-'); Bb.push(s2[j-1]); Mm.push(' '); j--;}
+    else if(t===3){Aa.push(s1[i-1]); Bb.push('-'); Mm.push(' '); i--;}
+    else break;
+  }
+  const alnA=Aa.reverse().join(''), alnB=Bb.reverse().join(''), mid=Mm.reverse().join('');
+  let mt=0,gp=0;
+  for(let x=0;x<mid.length;x++){ if(mid[x]==='|')mt++; if(alnA[x]==='-'||alnB[x]==='-')gp++; }
+  return {score:bs, aStart:i, aEnd:bi, bStart:j, bEnd:bj, alnA:alnA, alnB:alnB, mid:mid,
+          alnLen:alnA.length, matches:mt, gaps:gp, identity:alnA.length?mt/alnA.length:0};
+}
+
+/* ---------- terminal-repeat (LTR) call ---------- */
+function callLTR(seq, res, par){
+  const L=seq.length, tol=par.termTol;
+  const cands=res.fwd.filter(c=>
+      c.aStart<=tol && c.bEnd>=L-tol && c.bStart>c.aEnd &&
+      (c.aEnd-c.aStart)>=par.minLen && c.identity>=par.minIdent);
+  if(!cands.length) return null;
+  cands.sort((x,y)=>(y.aEnd-y.aStart)-(x.aEnd-x.aStart)||y.score-x.score);
+  const c=cands[0];
+  const s5=seq.slice(c.aStart,c.aEnd), s3=seq.slice(c.bStart,c.bEnd);
+  const aln=smithWaterman(s5,s3,{match:2,mismatch:-3,gapOpen:5,gapExtend:2,maxCells:9e6});
+  const tgca = s5.slice(0,2)==='TG' && s3.slice(-2)==='CA';
+  let ppt=null;
+  const wStart=Math.max(0,c.bStart-40), win=seq.slice(wStart,c.bStart);
+  for(let i=0;i+11<=win.length;i++){
+    let pur=0; for(let x=0;x<11;x++){const ch=win[i+x]; if(ch==='A'||ch==='G')pur++;}
+    if(!ppt||pur>ppt.purines) ppt={start:wStart+i, seq:win.slice(i,i+11), purines:pur};
+  }
+  return {
+    found:true, chain:c,
+    ltr5Start:c.aStart, ltr5End:c.aEnd, ltr3Start:c.bStart, ltr3End:c.bEnd,
+    ltrLen5:c.aEnd-c.aStart, ltrLen3:c.bEnd-c.bStart,
+    internalStart:c.aEnd, internalEnd:c.bStart, internalLen:c.bStart-c.aEnd,
+    identity:aln?aln.identity:c.identity, alignment:aln,
+    gaps:aln?aln.gaps:null, mismatches:aln?(aln.alnLen-aln.matches-aln.gaps):null,
+    tgca:tgca, ppt:ppt, seq5:s5, seq3:s3
+  };
+}
+
+/* ---------- top-level self comparison ---------- */
+function selfCompare(seqStr, opts){
+  const par=Object.assign({
+    k:12, maxHits:200, minLen:50, minIdent:0.75,
+    match:1, mismatch:-2, xdrop:30, maxHSPs:5000, maxChainHSPs:1500,
+    maxGap:300, maxIndel:150, gapOpen:6, gapExtend:0.5,
+    strand:'both', termTol:50
+  }, opts||{});
+  if(par.k<6||par.k>15) throw new Error('word size must be between 6 and 15');
+  const seq=seqStr.toUpperCase().replace(/[^ACGTN]/g,'N');
+  const L=seq.length, a=encode(seq);
+  const out={len:L, gc:gcContent(seq), params:par, fwd:[], rev:[], fwdHSPs:[], revHSPs:[], stats:{}};
+  if(par.strand==='fwd'||par.strand==='both'){
+    const r=findHSPs(a,a,par,true);
+    out.fwdHSPs=r.hsps.map(h=>Object.assign({strand:'+'},h));
+    out.stats.fwdSeeds=r.nSeeds;
+    out.fwd=chainHSPs(r.hsps,par).map(c=>Object.assign(c,{strand:'+'}));
+  }
+  if(par.strand==='rev'||par.strand==='both'){
+    const b=encode(revcompStr(seq));
+    const r=findHSPs(a,b,par,false);
+    out.stats.revSeeds=r.nSeeds;
+    const conv=h=>Object.assign({},h,{bStart:L-h.bEnd, bEnd:L-h.bStart, strand:'-'});
+    out.revHSPs=r.hsps.map(conv);
+    const rc=chainHSPs(r.hsps,par).map(c=>{
+      const cc=conv(c); cc.parts=c.parts.map(conv); return cc;
+    }).filter(c=>!(Math.abs(c.aStart-c.bStart)<par.k && Math.abs(c.aEnd-c.bEnd)<par.k));
+    // self-vs-revcomp reports every inverted repeat twice (A:B and B:A) - keep one
+    const seen=[];
+    out.rev=rc.filter(c=>{
+      for(const o of seen){
+        if(Math.abs(c.aStart-o.bStart)<=par.k && Math.abs(c.bStart-o.aStart)<=par.k &&
+           Math.abs(c.aEnd-o.bEnd)<=par.k && Math.abs(c.bEnd-o.aEnd)<=par.k) return false;
+      }
+      seen.push(c); return true;
+    }).map(c=>{ // orient so the left-most copy is listed first
+      if(c.aStart>c.bStart){
+        return Object.assign({},c,{aStart:c.bStart,aEnd:c.bEnd,bStart:c.aStart,bEnd:c.aEnd});
+      }
+      return c;
+    });
+  }
+  out.repeats=out.fwd.concat(out.rev).sort((x,y)=>y.score-x.score);
+  out.ltr=callLTR(seq,out,par);
+  return out;
+}
+
+const API={parseFasta:parseFasta,encode:encode,revcompStr:revcompStr,seedDiagonals:seedDiagonals,
+  findHSPs:findHSPs,chainHSPs:chainHSPs,smithWaterman:smithWaterman,selfCompare:selfCompare,
+  callLTR:callLTR,gcContent:gcContent};
+if(typeof module!=='undefined'&&module.exports) module.exports=API;
+root.LTRCore=API;
+})(typeof globalThis!=='undefined'?globalThis:this);
+
+</script>
+<script>
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const S={recs:[],seq:'',name:'',res:null,view:null,sortKey:'score',sortDir:-1,selIdx:-1};
+
+const PRESETS={
+ retro:{k:12,minLen:50,minIdent:75,termTol:50,maxGap:300,maxIndel:150,xdrop:30,maxHits:200},
+ sens: {k:9, minLen:40,minIdent:65,termTol:100,maxGap:600,maxIndel:300,xdrop:50,maxHits:500},
+ big:  {k:14,minLen:300,minIdent:85,termTol:200,maxGap:500,maxIndel:200,xdrop:40,maxHits:100}
+};
+$('preset').onchange=e=>{const p=PRESETS[e.target.value]; if(!p)return;
+  for(const key in p) $(key).value=p[key];};
+['k','minLen','minIdent','termTol','maxGap','maxIndel','xdrop','maxHits'].forEach(id=>{
+  $(id).addEventListener('input',()=>{$('preset').value='custom';});});
+
+/* ---------- input ---------- */
+function loadText(txt){
+  let recs=LTRCore.parseFasta(txt);
+  if(!recs.length){
+    const raw=txt.replace(/[^A-Za-z]/g,''); if(raw.length) recs=[{name:'pasted sequence',seq:raw.toUpperCase().replace(/U/g,'T'),len:raw.length}];
+  }
+  S.recs=recs;
+  const sel=$('recsel'); sel.innerHTML='';
+  recs.forEach((r,i)=>{const o=document.createElement('option');o.value=i;o.textContent=r.name+'  ('+r.len.toLocaleString()+' bp)';sel.appendChild(o);});
+  $('reclist').className=recs.length>1?'':'hide';
+  if(recs.length) pick(0); else $('seqstat').textContent='No sequence found.';
+}
+function pick(i){
+  const r=S.recs[i]; if(!r)return;
+  S.seq=r.seq; S.name=r.name;
+  const amb=(r.seq.match(/[^ACGT]/g)||[]).length;
+  $('seqstat').innerHTML='<b>'+esc(r.name)+'</b><br>'+r.len.toLocaleString()+' bp &middot; GC '+
+    (100*LTRCore.gcContent(r.seq)).toFixed(1)+'%'+(amb?(' &middot; '+amb+' ambiguous'):'');
+}
+$('recsel').onchange=e=>pick(+e.target.value);
+$('seqin').addEventListener('change',()=>loadText($('seqin').value));
+$('seqin').addEventListener('paste',()=>setTimeout(()=>loadText($('seqin').value),10));
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{$('seqin').value=rd.result.length>200000?rd.result.slice(0,200000)+'\n... [truncated in box; full sequence loaded]':rd.result;
+    loadText(rd.result);}; rd.readAsText(f);};
+$('clr').onclick=()=>{$('seqin').value='';S.recs=[];S.seq='';S.res=null;$('seqstat').textContent='';
+  $('reclist').className='hide';resetUI();};
+$('exHIV').onclick=()=>{$('seqin').value=HXB2;loadText(HXB2);$('preset').value='retro';$('preset').onchange({target:{value:'retro'}});};
+
+/* ---------- run ---------- */
+$('run').onclick=()=>{
+  if(!S.seq){$('status').textContent='Load a sequence first.';return;}
+  const n=S.seq.length;
+  if(n<40){$('status').textContent='Sequence too short (<40 bp).';return;}
+  $('status').textContent='Running on '+n.toLocaleString()+' bp...';
+  setTimeout(()=>{
+    const t0=performance.now();
+    let res;
+    try{
+      res=LTRCore.selfCompare(S.seq,{
+        k:+$('k').value, minLen:+$('minLen').value, minIdent:+$('minIdent').value/100,
+        termTol:+$('termTol').value, maxGap:+$('maxGap').value, maxIndel:+$('maxIndel').value,
+        xdrop:+$('xdrop').value, maxHits:+$('maxHits').value, strand:$('strand').value});
+    }catch(err){$('status').textContent='Error: '+err.message;return;}
+    const ms=performance.now()-t0;
+    S.res=res; S.view=null; S.selIdx=-1;
+    $('status').textContent=res.repeats.length+' repeat(s) in '+ms.toFixed(0)+' ms  ('+
+      ((res.stats.fwdSeeds||0)+(res.stats.revSeeds||0)).toLocaleString()+' word hits)';
+    renderAll();
+  },20);
+};
+function resetUI(){
+  $('verdict').className='verdict none';
+  $('verdict').innerHTML='<h3>No analysis yet</h3><div style="font-size:12.5px;color:var(--muted)">Paste a sequence and run the self-alignment.</div>';
+  $('track').innerHTML=''; $('tbl').tBodies[0].innerHTML=''; $('aln').textContent='\u2014';
+  const c=$('dot'),x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height);
+}
+function renderAll(){ renderVerdict(); drawDot(); renderTable(); renderAln(); }
+
+/* ---------- verdict + track ---------- */
+function renderVerdict(){
+  const r=S.res, L=r.ltr, v=$('verdict');
+  if(!L){
+    v.className='verdict none';
+    const near=r.fwd.filter(c=>c.aStart<=3*r.params.termTol||c.bEnd>=r.len-3*r.params.termTol).length;
+    v.innerHTML='<h3>No LTR detected</h3><div style="font-size:12.5px;color:var(--muted)">'+
+      'No direct repeat pair satisfies both termini within '+r.params.termTol+' bp at &ge;'+
+      (100*r.params.minIdent).toFixed(0)+'% identity over &ge;'+r.params.minLen+' bp. '+
+      (near?(near+' direct repeat(s) lie near a terminus &mdash; try raising terminal tolerance or lowering min identity.'):
+            'Internal repeats, if any, are listed below.')+'</div>';
+    $('track').innerHTML=trackHTML(null); return;
+  }
+  v.className='verdict';
+  const a=L.alignment;
+  v.innerHTML='<h3>LTR detected &mdash; '+L.ltrLen5.toLocaleString()+' bp, '+(100*L.identity).toFixed(2)+'% identity</h3>'+
+   '<div class="kv">'+
+   kv('5&prime; LTR',(L.ltr5Start+1).toLocaleString()+'&ndash;'+L.ltr5End.toLocaleString()+' ('+L.ltrLen5+' bp)')+
+   kv('3&prime; LTR',(L.ltr3Start+1).toLocaleString()+'&ndash;'+L.ltr3End.toLocaleString()+' ('+L.ltrLen3+' bp)')+
+   kv('Internal region',(L.internalStart+1).toLocaleString()+'&ndash;'+L.internalEnd.toLocaleString()+' ('+L.internalLen.toLocaleString()+' bp)')+
+   kv('Element span','1&ndash;'+L.ltr3End.toLocaleString())+
+   kv('Mismatches / gaps',(a?L.mismatches+' / '+L.gaps:'n/a'))+
+   kv('Aligned length',(a?a.alnLen.toLocaleString()+' bp':'n/a'))+
+   kv('5&prime;-TG &hellip; CA-3&prime;',L.tgca?'yes':'no')+
+   kv('PPT (best 11-mer)',L.ppt?(L.ppt.seq+' @ '+(L.ppt.start+1)+' &middot; '+L.ppt.purines+'/11 purine'):'n/a')+
+   '</div>';
+  $('track').innerHTML=trackHTML(L);
+}
+function kv(k,v){return '<div><span>'+k+'</span><br><b>'+v+'</b></div>';}
+function trackHTML(L){
+  const len=S.res.len, W=100;
+  let html='<div style="position:relative;height:40px;border:1px solid var(--line);border-radius:5px;background:#fafbfc;overflow:hidden">';
+  html+='<div style="position:absolute;left:0;top:16px;width:100%;height:8px;background:#e7eaee"></div>';
+  if(L){
+    const p=x=>(100*x/len)+'%';
+    html+='<div title="5\u2032 LTR" style="position:absolute;left:'+p(L.ltr5Start)+';width:'+p(L.ltrLen5)+';top:11px;height:18px;background:var(--ltr);border-radius:2px"></div>';
+    html+='<div title="3\u2032 LTR" style="position:absolute;left:'+p(L.ltr3Start)+';width:'+p(L.ltrLen3)+';top:11px;height:18px;background:var(--ltr);border-radius:2px"></div>';
+    html+='<div title="internal" style="position:absolute;left:'+p(L.internalStart)+';width:'+p(L.internalLen)+';top:16px;height:8px;background:#9fb3c8"></div>';
+  }
+  (S.res.repeats||[]).slice(0,40).forEach(c=>{
+    if(L&&c===L.chain)return;
+    const p=x=>(100*x/len)+'%';
+    const col=c.strand==='+'?'var(--fwd)':'var(--rev)';
+    html+='<div style="position:absolute;left:'+p(c.aStart)+';width:'+p(Math.max(c.aEnd-c.aStart,len/400))+';top:'+(c.strand==='+'?4:30)+'px;height:5px;background:'+col+';opacity:.75"></div>';
+    html+='<div style="position:absolute;left:'+p(c.bStart)+';width:'+p(Math.max(c.bEnd-c.bStart,len/400))+';top:'+(c.strand==='+'?4:30)+'px;height:5px;background:'+col+';opacity:.75"></div>';
+  });
+  html+='</div><div style="display:flex;justify-content:space-between;color:var(--muted);font-size:11px"><span>1</span><span>'+
+        len.toLocaleString()+' bp</span></div>';
+  return html;
+}
+
+/* ---------- dot plot ---------- */
+const PAD={l:62,r:14,t:14,b:46};
+function drawDot(){
+  const c=$('dot'), ctx=c.getContext('2d');
+  const dpr=window.devicePixelRatio||1, Wc=720, Hc=720;
+  c.width=Wc*dpr; c.height=Hc*dpr; c.style.width=Wc+'px'; c.style.height=Hc+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,Wc,Hc);
+  const r=S.res; if(!r)return;
+  const v=S.view||{x0:0,x1:r.len,y0:0,y1:r.len};
+  const pw=Wc-PAD.l-PAD.r, ph=Hc-PAD.t-PAD.b;
+  const X=p=>PAD.l+(p-v.x0)/(v.x1-v.x0)*pw;
+  const Y=p=>PAD.t+(p-v.y0)/(v.y1-v.y0)*ph;
+  ctx.fillStyle='#fff'; ctx.fillRect(PAD.l,PAD.t,pw,ph);
+  // grid + ticks
+  ctx.strokeStyle='#eef0f3'; ctx.fillStyle='#687385'; ctx.font='11px ui-monospace,Menlo,monospace'; ctx.lineWidth=1;
+  const ticks=niceTicks(v.x0,v.x1,8);
+  ticks.forEach(t=>{const x=X(t);if(x<PAD.l-1||x>PAD.l+pw+1)return;
+    ctx.beginPath();ctx.moveTo(x,PAD.t);ctx.lineTo(x,PAD.t+ph);ctx.stroke();
+    ctx.textAlign='center';ctx.fillText(fmtbp(t),x,PAD.t+ph+16);});
+  niceTicks(v.y0,v.y1,8).forEach(t=>{const y=Y(t);if(y<PAD.t-1||y>PAD.t+ph+1)return;
+    ctx.beginPath();ctx.moveTo(PAD.l,y);ctx.lineTo(PAD.l+pw,y);ctx.stroke();
+    ctx.textAlign='right';ctx.fillText(fmtbp(t),PAD.l-7,y+4);});
+  ctx.strokeStyle='#cbd1d9'; ctx.strokeRect(PAD.l,PAD.t,pw,ph);
+  ctx.fillStyle='#687385'; ctx.textAlign='center';
+  ctx.fillText('position (bp)  \u2014  '+ (S.name||'sequence').slice(0,70), PAD.l+pw/2, Hc-10);
+  ctx.save();ctx.translate(14,PAD.t+ph/2);ctx.rotate(-Math.PI/2);ctx.fillText('position (bp)',0,0);ctx.restore();
+  ctx.save(); ctx.beginPath(); ctx.rect(PAD.l,PAD.t,pw,ph); ctx.clip();
+  // main diagonal
+  ctx.strokeStyle='#c9ced6'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(X(v.x0),Y(v.x0)); ctx.lineTo(X(v.x1),Y(v.x1)); ctx.stroke();
+  const seg=(a0,a1,b0,b1)=>{ctx.beginPath();ctx.moveTo(X(a0),Y(b0));ctx.lineTo(X(a1),Y(b1));ctx.stroke();};
+  // HSP blocks (both mirror halves)
+  ctx.lineWidth=1.6;
+  ctx.strokeStyle=hex('--fwd');
+  (r.fwdHSPs||[]).forEach(h=>{seg(h.aStart,h.aEnd,h.bStart,h.bEnd); seg(h.bStart,h.bEnd,h.aStart,h.aEnd);});
+  ctx.strokeStyle=hex('--rev');
+  (r.revHSPs||[]).forEach(h=>{seg(h.aStart,h.aEnd,h.bEnd,h.bStart); seg(h.bEnd,h.bStart,h.aStart,h.aEnd);});
+  // selected repeat
+  if(S.selIdx>=0&&r.repeats[S.selIdx]){
+    const c2=r.repeats[S.selIdx]; ctx.strokeStyle='#f2a900'; ctx.lineWidth=4; ctx.globalAlpha=.75;
+    if(c2.strand==='+'){seg(c2.aStart,c2.aEnd,c2.bStart,c2.bEnd);seg(c2.bStart,c2.bEnd,c2.aStart,c2.aEnd);}
+    else{seg(c2.aStart,c2.aEnd,c2.bEnd,c2.bStart);seg(c2.bEnd,c2.bStart,c2.aStart,c2.aEnd);}
+    ctx.globalAlpha=1;
+  }
+  // LTR call
+  if(r.ltr){
+    const L=r.ltr; ctx.strokeStyle=hex('--ltr'); ctx.lineWidth=3.4;
+    seg(L.ltr5Start,L.ltr5End,L.ltr3Start,L.ltr3End);
+    seg(L.ltr3Start,L.ltr3End,L.ltr5Start,L.ltr5End);
+  }
+  ctx.restore();
+}
+function hex(varname){return getComputedStyle(document.documentElement).getPropertyValue(varname).trim();}
+function fmtbp(v){ if(v>=1e6)return (v/1e6).toFixed(v%1e6?1:0)+'M'; if(v>=1000)return (v/1000).toFixed(v%1000?1:0)+'k'; return String(Math.round(v)); }
+function niceTicks(a,b,n){const span=b-a; if(span<=0)return[a];
+  const raw=span/n, mag=Math.pow(10,Math.floor(Math.log10(raw))), norm=raw/mag;
+  const step=(norm<1.5?1:norm<3?2:norm<7?5:10)*mag;
+  const out=[]; for(let t=Math.ceil(a/step)*step;t<=b;t+=step)out.push(t); return out;}
+
+/* zoom + hover */
+(function(){
+  const c=$('dot'), hv=$('hover'); let drag=null;
+  const toBp=(ev)=>{const r=c.getBoundingClientRect(), v=S.view||{x0:0,x1:(S.res?S.res.len:1),y0:0,y1:(S.res?S.res.len:1)};
+    const pw=720-PAD.l-PAD.r, ph=720-PAD.t-PAD.b;
+    const px=(ev.clientX-r.left)*(720/r.width)-PAD.l, py=(ev.clientY-r.top)*(720/r.height)-PAD.t;
+    return {x:v.x0+px/pw*(v.x1-v.x0), y:v.y0+py/ph*(v.y1-v.y0), inside:px>=0&&px<=pw&&py>=0&&py<=ph, px:px, py:py};};
+  c.addEventListener('mousemove',ev=>{
+    if(!S.res)return; const p=toBp(ev);
+    if(p.inside){hv.style.display='block';hv.style.left=(ev.clientX-c.getBoundingClientRect().left)+'px';
+      hv.style.top=(ev.clientY-c.getBoundingClientRect().top)+'px';
+      hv.textContent='x '+Math.round(p.x).toLocaleString()+'  y '+Math.round(p.y).toLocaleString()+
+        '   \u0394 '+Math.round(Math.abs(p.x-p.y)).toLocaleString();}
+    else hv.style.display='none';
+    if(drag){drag.cur=p; drawDot(); const ctx=c.getContext('2d');
+      ctx.strokeStyle='#f2a900';ctx.lineWidth=1.3;ctx.setLineDash([4,3]);
+      const x0=Math.min(drag.start.px,p.px)+PAD.l, y0=Math.min(drag.start.py,p.py)+PAD.t;
+      ctx.strokeRect(x0,y0,Math.abs(p.px-drag.start.px),Math.abs(p.py-drag.start.py));ctx.setLineDash([]);}
+  });
+  c.addEventListener('mouseleave',()=>{hv.style.display='none';});
+  c.addEventListener('mousedown',ev=>{if(!S.res)return;const p=toBp(ev);if(p.inside)drag={start:p};});
+  window.addEventListener('mouseup',ev=>{
+    if(!drag||!S.res){drag=null;return;}
+    const p=toBp(ev), d=drag; drag=null;
+    const x0=Math.min(d.start.x,p.x),x1=Math.max(d.start.x,p.x),y0=Math.min(d.start.y,p.y),y1=Math.max(d.start.y,p.y);
+    if(x1-x0>S.res.len/500&&y1-y0>S.res.len/500){S.view={x0:Math.max(0,x0),x1:Math.min(S.res.len,x1),
+      y0:Math.max(0,y0),y1:Math.min(S.res.len,y1)};}
+    drawDot();});
+  c.addEventListener('dblclick',()=>{S.view=null;drawDot();});
+})();
+
+/* ---------- table ---------- */
+function renderTable(){
+  const tb=$('tbl').tBodies[0], reps=S.res.repeats.slice();
+  const key=S.sortKey;
+  reps.sort((a,b)=>{const va=key==='len'?a.aEnd-a.aStart:key==='dist'?a.bStart-a.aEnd:a[key];
+                    const vb=key==='len'?b.aEnd-b.aStart:key==='dist'?b.bStart-b.aEnd:b[key];
+                    return (va<vb?-1:va>vb?1:0)*S.sortDir;});
+  tb.innerHTML='';
+  reps.slice(0,500).forEach(c=>{
+    const tr=document.createElement('tr');
+    const isLTR=S.res.ltr&&c===S.res.ltr.chain;
+    tr.innerHTML='<td class="num">'+c.score.toFixed(0)+'</td>'+
+      '<td class="'+(c.strand==='+'?'plus':'minus')+'">'+c.strand+'</td>'+
+      '<td class="num">'+(c.aStart+1).toLocaleString()+'&ndash;'+c.aEnd.toLocaleString()+'</td>'+
+      '<td class="num">'+(c.bStart+1).toLocaleString()+'&ndash;'+c.bEnd.toLocaleString()+'</td>'+
+      '<td class="num">'+(c.aEnd-c.aStart).toLocaleString()+(isLTR?' <span style="color:var(--ltr)">\u2605</span>':'')+'</td>'+
+      '<td class="num">'+(100*c.identity).toFixed(1)+'%</td>'+
+      '<td class="num">'+c.nParts+'</td>'+
+      '<td class="num">'+(c.bStart-c.aEnd).toLocaleString()+'</td>';
+    tr.onclick=()=>{S.selIdx=S.res.repeats.indexOf(c);
+      [...tb.children].forEach(x=>x.classList.remove('sel')); tr.classList.add('sel');
+      S.view={x0:Math.max(0,c.aStart-(c.bEnd-c.aStart)*0.1),x1:Math.min(S.res.len,c.bEnd+(c.bEnd-c.aStart)*0.1),
+              y0:Math.max(0,c.aStart-(c.bEnd-c.aStart)*0.1),y1:Math.min(S.res.len,c.bEnd+(c.bEnd-c.aStart)*0.1)};
+      drawDot();};
+    tb.appendChild(tr);
+  });
+  $('tblnote').textContent=S.res.repeats.length?
+    ('Chained alignment blocks; "Spacing" is the gap between the two copies. Click a row to zoom the dot plot. '+
+     (S.res.repeats.length>500?'Showing top 500 of '+S.res.repeats.length+'.':'')):'No repeats above threshold.';
+}
+$('tbl').querySelectorAll('th').forEach(th=>th.onclick=()=>{
+  const k=th.dataset.s; if(S.sortKey===k)S.sortDir*=-1; else{S.sortKey=k;S.sortDir=-1;}
+  if(S.res)renderTable();});
+
+/* ---------- alignment ---------- */
+function renderAln(){
+  const L=S.res.ltr;
+  if(!L||!L.alignment){$('aln').textContent=L?'Alignment too large to display.':'\u2014'; return;}
+  $('aln').textContent=fmtAln(L);
+}
+function fmtAln(L){
+  const a=L.alignment, W=60;
+  let pa=L.ltr5Start+a.aStart, pb=L.ltr3Start+a.bStart, out=[];
+  out.push("5' LTR  "+(L.ltr5Start+1)+"-"+L.ltr5End+"      3' LTR  "+(L.ltr3Start+1)+"-"+L.ltr3End);
+  out.push('identity '+(100*a.identity).toFixed(2)+'%   matches '+a.matches+'   mismatches '+
+           (a.alnLen-a.matches-a.gaps)+'   gaps '+a.gaps+'   score '+a.score);
+  out.push('');
+  for(let i=0;i<a.alnLen;i+=W){
+    const sa=a.alnA.slice(i,i+W), sb=a.alnB.slice(i,i+W), sm=a.mid.slice(i,i+W);
+    const ca=sa.replace(/-/g,'').length, cb=sb.replace(/-/g,'').length;
+    out.push("5' "+String(pa+1).padStart(8)+' '+sa+' '+String(pa+ca).padStart(8));
+    out.push('   '+' '.repeat(8)+' '+sm);
+    out.push("3' "+String(pb+1).padStart(8)+' '+sb+' '+String(pb+cb).padStart(8));
+    out.push('');
+    pa+=ca; pb+=cb;
+  }
+  return out.join('\n');
+}
+
+/* ---------- exports ---------- */
+function dl(name,text,mime){
+  const b=new Blob([text],{type:mime||'text/plain'}), u=URL.createObjectURL(b);
+  const a=document.createElement('a'); a.href=u; a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(u),1500);
+}
+const base=()=>(S.name||'sequence').split(/\s+/)[0].replace(/[^\w.-]/g,'_');
+$('dlCsv').onclick=()=>{ if(!S.res)return;
+  const rows=[['strand','copy1_start','copy1_end','copy2_start','copy2_end','length','identity_pct','score','blocks','spacing_bp','is_LTR']];
+  S.res.repeats.forEach(c=>rows.push([c.strand,c.aStart+1,c.aEnd,c.bStart+1,c.bEnd,c.aEnd-c.aStart,
+    (100*c.identity).toFixed(2),c.score.toFixed(1),c.nParts,c.bStart-c.aEnd,(S.res.ltr&&c===S.res.ltr.chain)?'yes':'no']));
+  dl(base()+'_repeats.csv',rows.map(r=>r.join(',')).join('\n'),'text/csv');};
+$('dlBed').onclick=()=>{ if(!S.res)return;
+  const nm=base(), out=[];
+  S.res.repeats.forEach((c,i)=>{
+    out.push([nm,c.aStart,c.aEnd,'repeat'+(i+1)+'_copy1',Math.round(c.score),c.strand].join('\t'));
+    out.push([nm,c.bStart,c.bEnd,'repeat'+(i+1)+'_copy2',Math.round(c.score),c.strand].join('\t'));});
+  if(S.res.ltr){const L=S.res.ltr;
+    out.unshift([nm,L.ltr3Start,L.ltr3End,'LTR_3prime',1000,'+'].join('\t'));
+    out.unshift([nm,L.internalStart,L.internalEnd,'internal_region',1000,'+'].join('\t'));
+    out.unshift([nm,L.ltr5Start,L.ltr5End,'LTR_5prime',1000,'+'].join('\t'));}
+  dl(base()+'_repeats.bed',out.join('\n'),'text/plain');};
+$('dlFa').onclick=()=>{ if(!S.res||!S.res.ltr){alert('No LTR call to export.');return;}
+  const L=S.res.ltr, nm=base(), wrap=s=>s.replace(/(.{60})/g,'$1\n').trim();
+  dl(nm+'_LTR.fasta',
+    '>'+nm+'_5prime_LTR '+(L.ltr5Start+1)+'-'+L.ltr5End+'\n'+wrap(L.seq5)+'\n'+
+    '>'+nm+'_3prime_LTR '+(L.ltr3Start+1)+'-'+L.ltr3End+'\n'+wrap(L.seq3)+'\n'+
+    '>'+nm+'_internal '+(L.internalStart+1)+'-'+L.internalEnd+'\n'+
+    wrap(S.seq.slice(L.internalStart,L.internalEnd))+'\n','text/plain');};
+$('dlAln').onclick=()=>{ if(!S.res||!S.res.ltr||!S.res.ltr.alignment){alert('No alignment to export.');return;}
+  dl(base()+'_LTR_alignment.txt','# '+S.name+'\n'+fmtAln(S.res.ltr)+'\n');};
+$('dlPng').onclick=()=>{ if(!S.res)return;
+  const c=$('dot'), out=document.createElement('canvas');
+  out.width=c.width; out.height=c.height; const x=out.getContext('2d');
+  x.fillStyle='#fff'; x.fillRect(0,0,out.width,out.height); x.drawImage(c,0,0);
+  out.toBlob(b=>{const u=URL.createObjectURL(b),a=document.createElement('a');
+    a.href=u;a.download=base()+'_dotplot.png';a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);});};
+
+function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+window.addEventListener('keydown',e=>{if(e.key==='Escape'){S.view=null;drawDot();}});
+const HXB2='>HIV-1_HXB2 K03455.1 complete genome\nTGGAAGGGCTAATTCACTCCCAACGAAGACAAGATATCCTTGATCTGTGGATCTACCACA\nCACAAGGCTACTTCCCTGATTAGCAGAACTACACACCAGGGCCAGGGATCAGATATCCAC\nTGACCTTTGGATGGTGCTACAAGCTAGTACCAGTTGAGCCAGAGAAGTTAGAAGAAGCCA\nACAAAGGAGAGAACACCAGCTTGTTACACCCTGTGAGCCTGCATGGAATGGATGACCCGG\nAGAGAGAAGTGTTAGAGTGGAGGTTTGACAGCCGCCTAGCATTTCATCACATGGCCCGAG\nAGCTGCATCCGGAGTACTTCAAGAACTGCTGACATCGAGCTTGCTACAAGGGACTTTCCG\nCTGGGGACTTTCCAGGGAGGCGTGGCCTGGGCGGGACTGGGGAGTGGCGAGCCCTCAGAT\nCCTGCATATAAGCAGCTGCTTTTTGCCTGTACTGGGTCTCTCTGGTTAGACCAGATCTGA\nGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACTGCTTAAGCCTCAATAAAGCTTGCCT\nTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTGTGACTCTGGTAACTAGAGATCCCTC\nAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCAGTGGCGCCCGAACAGGGACCTGAAAG\nCGAAAGGGAAACCAGAGGAGCTCTCTCGACGCAGGACTCGGCTTGCTGAAGCGCGCACGG\nCAAGAGGCGAGGGGCGGCGACTGGTGAGTACGCCAAAAATTTTGACTAGCGGAGGCTAGA\nAGGAGAGAGATGGGTGCGAGAGCGTCAGTATTAAGCGGGGGAGAATTAGATCGATGGGAA\nAAAATTCGGTTAAGGCCAGGGGGAAAGAAAAAATATAAATTAAAACATATAGTATGGGCA\nAGCAGGGAGCTAGAACGATTCGCAGTTAATCCTGGCCTGTTAGAAACATCAGAAGGCTGT\nAGACAAATACTGGGACAGCTACAACCATCCCTTCAGACAGGATCAGAAGAACTTAGATCA\nTTATATAATACAGTAGCAACCCTCTATTGTGTGCATCAAAGGATAGAGATAAAAGACACC\nAAGGAAGCTTTAGACAAGATAGAGGAAGAGCAAAACAAAAGTAAGAAAAAAGCACAGCAA\nGCAGCAGCTGACACAGGACACAGCAATCAGGTCAGCCAAAATTACCCTATAGTGCAGAAC\nATCCAGGGGCAAATGGTACATCAGGCCATATCACCTAGAACTTTAAATGCATGGGTAAAA\nGTAGTAGAAGAGAAGGCTTTCAGCCCAGAAGTGATACCCATGTTTTCAGCATTATCAGAA\nGGAGCCACCCCACAAGATTTAAACACCATGCTAAACACAGTGGGGGGACATCAAGCAGCC\nATGCAAATGTTAAAAGAGACCATCAATGAGGAAGCTGCAGAATGGGATAGAGTGCATCCA\nGTGCATGCAGGGCCTATTGCACCAGGCCAGATGAGAGAACCAAGGGGAAGTGACATAGCA\nGGAACTACTAGTACCCTTCAGGAACAAATAGGATGGATGACAAATAATCCACCTATCCCA\nGTAGGAGAAATTTATAAAAGATGGATAATCCTGGGATTAAATAAAATAGTAAGAATGTAT\nAGCCCTACCAGCATTCTGGACATAAGACAAGGACCAAAGGAACCCTTTAGAGACTATGTA\nGACCGGTTCTATAAAACTCTAAGAGCCGAGCAAGCTTCACAGGAGGTAAAAAATTGGATG\nACAGAAACCTTGTTGGTCCAAAATGCGAACCCAGATTGTAAGACTATTTTAAAAGCATTG\nGGACCAGCGGCTACACTAGAAGAAATGATGACAGCATGTCAGGGAGTAGGAGGACCCGGC\nCATAAGGCAAGAGTTTTGGCTGAAGCAATGAGCCAAGTAACAAATTCAGCTACCATAATG\nATGCAGAGAGGCAATTTTAGGAACCAAAGAAAGATTGTTAAGTGTTTCAATTGTGGCAAA\nGAAGGGCACACAGCCAGAAATTGCAGGGCCCCTAGGAAAAAGGGCTGTTGGAAATGTGGA\nAAGGAAGGACACCAAATGAAAGATTGTACTGAGAGACAGGCTAATTTTTTAGGGAAGATC\nTGGCCTTCCTACAAGGGAAGGCCAGGGAATTTTCTTCAGAGCAGACCAGAGCCAACAGCC\nCCACCAGAAGAGAGCTTCAGGTCTGGGGTAGAGACAACAACTCCCCCTCAGAAGCAGGAG\nCCGATAGACAAGGAACTGTATCCTTTAACTTCCCTCAGGTCACTCTTTGGCAACGACCCC\nTCGTCACAATAAAGATAGGGGGGCAACTAAAGGAAGCTCTATTAGATACAGGAGCAGATG\nATACAGTATTAGAAGAAATGAGTTTGCCAGGAAGATGGAAACCAAAAATGATAGGGGGAA\nTTGGAGGTTTTATCAAAGTAAGACAGTATGATCAGATACTCATAGAAATCTGTGGACATA\nAAGCTATAGGTACAGTATTAGTAGGACCTACACCTGTCAACATAATTGGAAGAAATCTGT\nTGACTCAGATTGGTTGCACTTTAAATTTTCCCATTAGCCCTATTGAGACTGTACCAGTAA\nAATTAAAGCCAGGAATGGATGGCCCAAAAGTTAAACAATGGCCATTGACAGAAGAAAAAA\nTAAAAGCATTAGTAGAAATTTGTACAGAGATGGAAAAGGAAGGGAAAATTTCAAAAATTG\nGGCCTGAAAATCCATACAATACTCCAGTATTTGCCATAAAGAAAAAAGACAGTACTAAAT\nGGAGAAAATTAGTAGATTTCAGAGAACTTAATAAGAGAACTCAAGACTTCTGGGAAGTTC\nAATTAGGAATACCACATCCCGCAGGGTTAAAAAAGAAAAAATCAGTAACAGTACTGGATG\nTGGGTGATGCATATTTTTCAGTTCCCTTAGATGAAGACTTCAGGAAGTATACTGCATTTA\nCCATACCTAGTATAAACAATGAGACACCAGGGATTAGATATCAGTACAATGTGCTTCCAC\nAGGGATGGAAAGGATCACCAGCAATATTCCAAAGTAGCATGACAAAAATCTTAGAGCCTT\nTTAGAAAACAAAATCCAGACATAGTTATCTATCAATACATGGATGATTTGTATGTAGGAT\nCTGACTTAGAAATAGGGCAGCATAGAACAAAAATAGAGGAGCTGAGACAACATCTGTTGA\nGGTGGGGACTTACCACACCAGACAAAAAACATCAGAAAGAACCTCCATTCCTTTGGATGG\nGTTATGAACTCCATCCTGATAAATGGACAGTACAGCCTATAGTGCTGCCAGAAAAAGACA\nGCTGGACTGTCAATGACATACAGAAGTTAGTGGGGAAATTGAATTGGGCAAGTCAGATTT\nACCCAGGGATTAAAGTAAGGCAATTATGTAAACTCCTTAGAGGAACCAAAGCACTAACAG\nAAGTAATACCACTAACAGAAGAAGCAGAGCTAGAACTGGCAGAAAACAGAGAGATTCTAA\nAAGAACCAGTACATGGAGTGTATTATGACCCATCAAAAGACTTAATAGCAGAAATACAGA\nAGCAGGGGCAAGGCCAATGGACATATCAAATTTATCAAGAGCCATTTAAAAATCTGAAAA\nCAGGAAAATATGCAAGAATGAGGGGTGCCCACACTAATGATGTAAAACAATTAACAGAGG\nCAGTGCAAAAAATAACCACAGAAAGCATAGTAATATGGGGAAAGACTCCTAAATTTAAAC\nTGCCCATACAAAAGGAAACATGGGAAACATGGTGGACAGAGTATTGGCAAGCCACCTGGA\nTTCCTGAGTGGGAGTTTGTTAATACCCCTCCCTTAGTGAAATTATGGTACCAGTTAGAGA\nAAGAACCCATAGTAGGAGCAGAAACCTTCTATGTAGATGGGGCAGCTAACAGGGAGACTA\nAATTAGGAAAAGCAGGATATGTTACTAATAGAGGAAGACAAAAAGTTGTCACCCTAACTG\nACACAACAAATCAGAAGACTGAGTTACAAGCAATTTATCTAGCTTTGCAGGATTCGGGAT\nTAGAAGTAAACATAGTAACAGACTCACAATATGCATTAGGAATCATTCAAGCACAACCAG\nATCAAAGTGAATCAGAGTTAGTCAATCAAATAATAGAGCAGTTAATAAAAAAGGAAAAGG\nTCTATCTGGCATGGGTACCAGCACACAAAGGAATTGGAGGAAATGAACAAGTAGATAAAT\nTAGTCAGTGCTGGAATCAGGAAAGTACTATTTTTAGATGGAATAGATAAGGCCCAAGATG\nAACATGAGAAATATCACAGTAATTGGAGAGCAATGGCTAGTGATTTTAACCTGCCACCTG\nTAGTAGCAAAAGAAATAGTAGCCAGCTGTGATAAATGTCAGCTAAAAGGAGAAGCCATGC\nATGGACAAGTAGACTGTAGTCCAGGAATATGGCAACTAGATTGTACACATTTAGAAGGAA\nAAGTTATCCTGGTAGCAGTTCATGTAGCCAGTGGATATATAGAAGCAGAAGTTATTCCAG\nCAGAAACAGGGCAGGAAACAGCATATTTTCTTTTAAAATTAGCAGGAAGATGGCCAGTAA\nAAACAATACATACTGACAATGGCAGCAATTTCACCGGTGCTACGGTTAGGGCCGCCTGTT\nGGTGGGCGGGAATCAAGCAGGAATTTGGAATTCCCTACAATCCCCAAAGTCAAGGAGTAG\nTAGAATCTATGAATAAAGAATTAAAGAAAATTATAGGACAGGTAAGAGATCAGGCTGAAC\nATCTTAAGACAGCAGTACAAATGGCAGTATTCATCCACAATTTTAAAAGAAAAGGGGGGA\nTTGGGGGGTACAGTGCAGGGGAAAGAATAGTAGACATAATAGCAACAGACATACAAACTA\nAAGAATTACAAAAACAAATTACAAAAATTCAAAATTTTCGGGTTTATTACAGGGACAGCA\nGAAATCCACTTTGGAAAGGACCAGCAAAGCTCCTCTGGAAAGGTGAAGGGGCAGTAGTAA\nTACAAGATAATAGTGACATAAAAGTAGTGCCAAGAAGAAAAGCAAAGATCATTAGGGATT\nATGGAAAACAGATGGCAGGTGATGATTGTGTGGCAAGTAGACAGGATGAGGATTAGAACA\nTGGAAAAGTTTAGTAAAACACCATATGTATGTTTCAGGGAAAGCTAGGGGATGGTTTTAT\nAGACATCACTATGAAAGCCCTCATCCAAGAATAAGTTCAGAAGTACACATCCCACTAGGG\nGATGCTAGATTGGTAATAACAACATATTGGGGTCTGCATACAGGAGAAAGAGACTGGCAT\nTTGGGTCAGGGAGTCTCCATAGAATGGAGGAAAAAGAGATATAGCACACAAGTAGACCCT\nGAACTAGCAGACCAACTAATTCATCTGTATTACTTTGACTGTTTTTCAGACTCTGCTATA\nAGAAAGGCCTTATTAGGACACATAGTTAGCCCTAGGTGTGAATATCAAGCAGGACATAAC\nAAGGTAGGATCTCTACAATACTTGGCACTAGCAGCATTAATAACACCAAAAAAGATAAAG\nCCACCTTTGCCTAGTGTTACGAAACTGACAGAGGATAGATGGAACAAGCCCCAGAAGACC\nAAGGGCCACAGAGGGAGCCACACAATGAATGGACACTAGAGCTTTTAGAGGAGCTTAAGA\nATGAAGCTGTTAGACATTTTCCTAGGATTTGGCTCCATGGCTTAGGGCAACATATCTATG\nAAACTTATGGGGATACTTGGGCAGGAGTGGAAGCCATAATAAGAATTCTGCAACAACTGC\nTGTTTATCCATTTTCAGAATTGGGTGTCGACATAGCAGAATAGGCGTTACTCGACAGAGG\nAGAGCAAGAAATGGAGCCAGTAGATCCTAGACTAGAGCCCTGGAAGCATCCAGGAAGTCA\nGCCTAAAACTGCTTGTACCAATTGCTATTGTAAAAAGTGTTGCTTTCATTGCCAAGTTTG\nTTTCATAACAAAAGCCTTAGGCATCTCCTATGGCAGGAAGAAGCGGAGACAGCGACGAAG\nAGCTCATCAGAACAGTCAGACTCATCAAGCTTCTCTATCAAAGCAGTAAGTAGTACATGT\nAACGCAACCTATACCAATAGTAGCAATAGTAGCATTAGTAGTAGCAATAATAATAGCAAT\nAGTTGTGTGGTCCATAGTAATCATAGAATATAGGAAAATATTAAGACAAAGAAAAATAGA\nCAGGTTAATTGATAGACTAATAGAAAGAGCAGAAGACAGTGGCAATGAGAGTGAAGGAGA\nAATATCAGCACTTGTGGAGATGGGGGTGGAGATGGGGCACCATGCTCCTTGGGATGTTGA\nTGATCTGTAGTGCTACAGAAAAATTGTGGGTCACAGTCTATTATGGGGTACCTGTGTGGA\nAGGAAGCAACCACCACTCTATTTTGTGCATCAGATGCTAAAGCATATGATACAGAGGTAC\nATAATGTTTGGGCCACACATGCCTGTGTACCCACAGACCCCAACCCACAAGAAGTAGTAT\nTGGTAAATGTGACAGAAAATTTTAACATGTGGAAAAATGACATGGTAGAACAGATGCATG\nAGGATATAATCAGTTTATGGGATCAAAGCCTAAAGCCATGTGTAAAATTAACCCCACTCT\nGTGTTAGTTTAAAGTGCACTGATTTGAAGAATGATACTAATACCAATAGTAGTAGCGGGA\nGAATGATAATGGAGAAAGGAGAGATAAAAAACTGCTCTTTCAATATCAGCACAAGCATAA\nGAGGTAAGGTGCAGAAAGAATATGCATTTTTTTATAAACTTGATATAATACCAATAGATA\nATGATACTACCAGCTATAAGTTGACAAGTTGTAACACCTCAGTCATTACACAGGCCTGTC\nCAAAGGTATCCTTTGAGCCAATTCCCATACATTATTGTGCCCCGGCTGGTTTTGCGATTC\nTAAAATGTAATAATAAGACGTTCAATGGAACAGGACCATGTACAAATGTCAGCACAGTAC\nAATGTACACATGGAATTAGGCCAGTAGTATCAACTCAACTGCTGTTAAATGGCAGTCTAG\nCAGAAGAAGAGGTAGTAATTAGATCTGTCAATTTCACGGACAATGCTAAAACCATAATAG\nTACAGCTGAACACATCTGTAGAAATTAATTGTACAAGACCCAACAACAATACAAGAAAAA\nGAATCCGTATCCAGAGAGGACCAGGGAGAGCATTTGTTACAATAGGAAAAATAGGAAATA\nTGAGACAAGCACATTGTAACATTAGTAGAGCAAAATGGAATAACACTTTAAAACAGATAG\nCTAGCAAATTAAGAGAACAATTTGGAAATAATAAAACAATAATCTTTAAGCAATCCTCAG\nGAGGGGACCCAGAAATTGTAACGCACAGTTTTAATTGTGGAGGGGAATTTTTCTACTGTA\nATTCAACACAACTGTTTAATAGTACTTGGTTTAATAGTACTTGGAGTACTGAAGGGTCAA\nATAACACTGAAGGAAGTGACACAATCACCCTCCCATGCAGAATAAAACAAATTATAAACA\nTGTGGCAGAAAGTAGGAAAAGCAATGTATGCCCCTCCCATCAGTGGACAAATTAGATGTT\nCATCAAATATTACAGGGCTGCTATTAACAAGAGATGGTGGTAATAGCAACAATGAGTCCG\nAGATCTTCAGACCTGGAGGAGGAGATATGAGGGACAATTGGAGAAGTGAATTATATAAAT\nATAAAGTAGTAAAAATTGAACCATTAGGAGTAGCACCCACCAAGGCAAAGAGAAGAGTGG\nTGCAGAGAGAAAAAAGAGCAGTGGGAATAGGAGCTTTGTTCCTTGGGTTCTTGGGAGCAG\nCAGGAAGCACTATGGGCGCAGCCTCAATGACGCTGACGGTACAGGCCAGACAATTATTGT\nCTGGTATAGTGCAGCAGCAGAACAATTTGCTGAGGGCTATTGAGGCGCAACAGCATCTGT\nTGCAACTCACAGTCTGGGGCATCAAGCAGCTCCAGGCAAGAATCCTGGCTGTGGAAAGAT\nACCTAAAGGATCAACAGCTCCTGGGGATTTGGGGTTGCTCTGGAAAACTCATTTGCACCA\nCTGCTGTGCCTTGGAATGCTAGTTGGAGTAATAAATCTCTGGAACAGATTTGGAATCACA\nCGACCTGGATGGAGTGGGACAGAGAAATTAACAATTACACAAGCTTAATACACTCCTTAA\nTTGAAGAATCGCAAAACCAGCAAGAAAAGAATGAACAAGAATTATTGGAATTAGATAAAT\nGGGCAAGTTTGTGGAATTGGTTTAACATAACAAATTGGCTGTGGTATATAAAATTATTCA\nTAATGATAGTAGGAGGCTTGGTAGGTTTAAGAATAGTTTTTGCTGTACTTTCTATAGTGA\nATAGAGTTAGGCAGGGATATTCACCATTATCGTTTCAGACCCACCTCCCAACCCCGAGGG\nGACCCGACAGGCCCGAAGGAATAGAAGAAGAAGGTGGAGAGAGAGACAGAGACAGATCCA\nTTCGATTAGTGAACGGATCCTTGGCACTTATCTGGGACGATCTGCGGAGCCTGTGCCTCT\nTCAGCTACCACCGCTTGAGAGACTTACTCTTGATTGTAACGAGGATTGTGGAACTTCTGG\nGACGCAGGGGGTGGGAAGCCCTCAAATATTGGTGGAATCTCCTACAGTATTGGAGTCAGG\nAACTAAAGAATAGTGCTGTTAGCTTGCTCAATGCCACAGCCATAGCAGTAGCTGAGGGGA\nCAGATAGGGTTATAGAAGTAGTACAAGGAGCTTGTAGAGCTATTCGCCACATACCTAGAA\nGAATAAGACAGGGCTTGGAAAGGATTTTGCTATAAGATGGGTGGCAAGTGGTCAAAAAGT\nAGTGTGATTGGATGGCCTACTGTAAGGGAAAGAATGAGACGAGCTGAGCCAGCAGCAGAT\nAGGGTGGGAGCAGCATCTCGAGACCTGGAAAAACATGGAGCAATCACAAGTAGCAATACA\nGCAGCTACCAATGCTGCTTGTGCCTGGCTAGAAGCACAAGAGGAGGAGGAGGTGGGTTTT\nCCAGTCACACCTCAGGTACCTTTAAGACCAATGACTTACAAGGCAGCTGTAGATCTTAGC\nCACTTTTTAAAAGAAAAGGGGGGACTGGAAGGGCTAATTCACTCCCAAAGAAGACAAGAT\nATCCTTGATCTGTGGATCTACCACACACAAGGCTACTTCCCTGATTAGCAGAACTACACA\nCCAGGGCCAGGGGTCAGATATCCACTGACCTTTGGATGGTGCTACAAGCTAGTACCAGTT\nGAGCCAGATAAGATAGAAGAGGCCAATAAAGGAGAGAACACCAGCTTGTTACACCCTGTG\nAGCCTGCATGGGATGGATGACCCGGAGAGAGAAGTGTTAGAGTGGAGGTTTGACAGCCGC\nCTAGCATTTCATCACGTGGCCCGAGAGCTGCATCCGGAGTACTTCAAGAACTGCTGACAT\nCGAGCTTGCTACAAGGGACTTTCCGCTGGGGACTTTCCAGGGAGGCGTGGCCTGGGCGGG\nACTGGGGAGTGGCGAGCCCTCAGATCCTGCATATAAGCAGCTGCTTTTTGCCTGTACTGG\nGTCTCTCTGGTTAGACCAGATCTGAGCCTGGGAGCTCTCTGGCTAACTAGGGAACCCACT\nGCTTAAGCCTCAATAAAGCTTGCCTTGAGTGCTTCAAGTAGTGTGTGCCCGTCTGTTGTG\nTGACTCTGGTAACTAGAGATCCCTCAGACCCTTTTAGTCAGTGTGGAAAATCTCTAGCA';
+})();
+</script>
+</body>
+</html>
