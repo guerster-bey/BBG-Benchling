@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DNA Translator · Stop-Codon Read-through</title>
+<style>
+  :root{
+    --bg:#f5f6f8; --panel:#ffffff; --ink:#1c2230; --muted:#687087; --line:#dde1e8;
+    --accent:#2d6bd6; --accent-ink:#fff; --accent-soft:#e8effc;
+    --start:#1c8f4c; --start-bg:#e1f5e8;
+    --stop:#cf3e3e; --stop-bg:#fde6e6;
+    --rt:#a86d10; --rt-bg:#fff0cc;
+    --seg-a:transparent; --seg-b:#eef3fc;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#13161c; --panel:#1b1f27; --ink:#e5e8ee; --muted:#98a1b3; --line:#2d3340;
+      --accent:#5a8ef0; --accent-soft:#22304a;
+      --start:#53cf8a; --start-bg:#16352a;
+      --stop:#ff7a7a; --stop-bg:#3c1d20;
+      --rt:#f1b851; --rt-bg:#3a2d12;
+      --seg-b:#1f2a3d;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 var(--sans)}
+  main{max-width:1180px;margin:0 auto;padding:24px 20px 60px}
+  h1{font-size:22px;margin:0 0 2px}
+  .sub{color:var(--muted);margin:0 0 18px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:16px}
+  .panel h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 10px;font-weight:600}
+  textarea{width:100%;min-height:120px;resize:vertical;font:13px/1.4 var(--mono);padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  textarea:focus,select:focus,input:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .row-flex{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end}
+  label.ctl{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+  select,input[type=number]{font:14px var(--sans);padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+  input[type=number]{width:110px}
+  .check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink);padding-bottom:6px}
+  button{font:13px var(--sans);padding:7px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  button.primary:hover:not(:disabled){filter:brightness(1.08)}
+  .meta{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
+  .meta b{color:var(--ink);font-weight:600}
+  .warn{color:var(--rt)}
+  .err{color:var(--stop)}
+  table{border-collapse:collapse;width:100%;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  td.num{font-family:var(--mono)}
+  tr.active td{background:var(--accent-soft)}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:12px}
+  .stat{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+  .stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .stat .v{font-size:16px;font-weight:600;font-family:var(--mono)}
+  .status{padding:9px 12px;border-radius:8px;margin-bottom:12px;font-size:13px;border:1px solid var(--line)}
+  .status.stop{background:var(--stop-bg);border-color:transparent}
+  .status.open{background:var(--start-bg);border-color:transparent}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .codons{font-family:var(--mono);overflow-x:auto}
+  .crow{display:flex;align-items:stretch;margin-bottom:6px}
+  .rowlab{flex:0 0 78px;display:flex;flex-direction:column;justify-content:center;font-size:11px;color:var(--muted);text-align:right;padding-right:10px}
+  .cod{flex:0 0 auto;width:38px;text-align:center;padding:2px 0;border-radius:4px;margin-right:1px}
+  .cod b{display:block;font-size:14px;font-weight:600}
+  .cod i{display:block;font-style:normal;font-size:11px;color:var(--muted);letter-spacing:.02em}
+  .three .cod{width:42px}
+  .three .cod b{font-size:12px}
+  .seg1{background:var(--seg-b)}
+  .cod.start{background:var(--start-bg)} .cod.start b{color:var(--start)}
+  .cod.stop{background:var(--stop-bg)} .cod.stop b{color:var(--stop)}
+  .cod.rt{background:var(--rt-bg);outline:1px dashed var(--rt)} .cod.rt b{color:var(--rt)}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);margin-top:10px}
+  .sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+  .prot{font:13px/1.6 var(--mono);white-space:pre-wrap;word-break:break-all;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin:0}
+  .prot .rtaa{background:var(--rt-bg);color:var(--rt);font-weight:700;border-radius:2px}
+  .prot .stopaa{color:var(--stop);font-weight:700}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:6px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  .hidden{display:none}
+  footer{color:var(--muted);font-size:12px;margin-top:24px}
+</style>
+</head>
+<body>
+<main>
+  <h1>DNA Translator</h1>
+  <p class="sub">Paste a DNA/RNA sequence, pick a frame, and translate. Use <b>Read through stop</b> to continue in the same frame past a stop codon to the next one.</p>
+
+  <section class="panel">
+    <h2>Sequence</h2>
+    <textarea id="seqIn" spellcheck="false" placeholder="Paste raw sequence or FASTA. Numbers, spaces and line breaks are ignored; U is read as T; IUPAC codes are accepted."></textarea>
+    <div class="row-flex" style="margin-top:8px;justify-content:space-between">
+      <div class="meta" id="seqMeta">No sequence.</div>
+      <div style="display:flex;gap:8px">
+        <button id="btnExample">Load example</button>
+        <button id="btnClear">Clear</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Settings</h2>
+    <div class="row-flex">
+      <label class="ctl">Strand
+        <select id="strand"><option value="+">+ (as entered)</option><option value="-">− (reverse complement)</option></select>
+      </label>
+      <label class="ctl">Frame
+        <select id="frame"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+      </label>
+      <label class="ctl">Start translation at
+        <select id="startMode">
+          <option value="atg">First ATG in frame</option>
+          <option value="frame">Beginning of frame</option>
+          <option value="custom">Custom nt position</option>
+        </select>
+      </label>
+      <label class="ctl" id="customWrap">Start nt (input coords)
+        <input type="number" id="customPos" min="1" value="1">
+      </label>
+      <label class="ctl">Residue at read-through stop
+        <select id="rtRes">
+          <option value="*">* (keep as stop)</option>
+          <option value="X">X (unknown)</option>
+          <option value="Q">Q – Gln (amber suppression, e.g. MLV gag-pol)</option>
+          <option value="W">W – Trp (UGA read-through)</option>
+          <option value="R">R – Arg</option>
+          <option value="C">C – Cys</option>
+          <option value="Y">Y – Tyr</option>
+          <option value="U">U – Sec (selenocysteine)</option>
+        </select>
+      </label>
+      <label class="ctl">Codons per row
+        <select id="perRow"><option>10</option><option selected>20</option><option>30</option></select>
+      </label>
+      <label class="check"><input type="checkbox" id="three"> 3-letter code</label>
+      <label class="check"><input type="checkbox" id="rna"> Show codons as RNA</label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Six-frame overview — longest ATG-initiated ORF per frame</h2>
+    <div id="orfTable"><span class="meta">Paste a sequence to see ORFs.</span></div>
+  </section>
+
+  <section class="panel" id="resultPanel">
+    <h2>Translation</h2>
+    <div id="result"><span class="meta">Paste a sequence to translate.</span></div>
+  </section>
+
+  <footer>Standard genetic code (NCBI table 1). Ambiguous codons are translated when every possible reading gives the same amino acid, otherwise X. Molecular weight is the average mass of the product as shown (stops and X excluded). Runs entirely in your browser; nothing is uploaded.</footer>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  // ---------- genetic code ----------
+  const CODE = (() => {
+    const b = "TCAG", a = "FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG";
+    const m = {}; let n = 0;
+    for (const x of b) for (const y of b) for (const z of b) m[x + y + z] = a[n++];
+    return m;
+  })();
+  const IUPAC = {A:"A",C:"C",G:"G",T:"T",R:"AG",Y:"CT",S:"CG",W:"AT",K:"GT",M:"AC",B:"CGT",D:"AGT",H:"ACT",V:"ACG",N:"ACGT"};
+  const COMP = {A:"T",T:"A",C:"G",G:"C",R:"Y",Y:"R",S:"S",W:"W",K:"M",M:"K",B:"V",V:"B",D:"H",H:"D",N:"N"};
+  const THREE = {A:"Ala",R:"Arg",N:"Asn",D:"Asp",C:"Cys",E:"Glu",Q:"Gln",G:"Gly",H:"His",I:"Ile",L:"Leu",K:"Lys",M:"Met",F:"Phe",P:"Pro",S:"Ser",T:"Thr",W:"Trp",Y:"Tyr",V:"Val",U:"Sec",X:"Xaa","*":"Ter"};
+  const MASS = {A:71.0788,R:156.1875,N:114.1038,D:115.0886,C:103.1388,E:129.1155,Q:128.1307,G:57.0519,H:137.1411,I:113.1594,L:113.1594,K:128.1741,M:131.1926,F:147.1766,P:97.1167,S:87.0782,T:101.1051,W:186.2132,Y:163.1760,V:99.1326,U:150.0388};
+
+  const trCache = {};
+  function translateCodon(c) {
+    if (CODE[c]) return CODE[c];
+    if (trCache[c]) return trCache[c];
+    const set = new Set();
+    for (const x of IUPAC[c[0]] || "") for (const y of IUPAC[c[1]] || "") for (const z of IUPAC[c[2]] || "") set.add(CODE[x + y + z]);
+    return (trCache[c] = set.size === 1 ? [...set][0] : "X");
+  }
+  const revComp = s => { let o = ""; for (let i = s.length - 1; i >= 0; i--) o += COMP[s[i]] || "N"; return o; };
+
+  // ---------- DOM ----------
+  const $ = id => document.getElementById(id);
+  const el = {
+    seqIn: $("seqIn"), seqMeta: $("seqMeta"), strand: $("strand"), frame: $("frame"),
+    startMode: $("startMode"), customPos: $("customPos"), customWrap: $("customWrap"),
+    rtRes: $("rtRes"), perRow: $("perRow"), three: $("three"), rna: $("rna"),
+    orfTable: $("orfTable"), result: $("result"), toast: $("toast")
+  };
+
+  // ---------- state ----------
+  const st = { seq: "", rc: "", header: "", readthroughs: 0 };
+
+  function parseInput(raw) {
+    let header = "", records = 0;
+    const lines = raw.split(/\r?\n/);
+    let body = [];
+    if (lines.some(l => l.trim().startsWith(">"))) {
+      let inFirst = false;
+      for (const l of lines) {
+        if (l.trim().startsWith(">")) {
+          records++;
+          if (records === 1) { header = l.trim().slice(1).trim(); inFirst = true; } else inFirst = false;
+        } else if (inFirst) body.push(l);
+      }
+    } else body = lines;
+    const letters = body.join("").toUpperCase().replace(/U/g, "T").replace(/[^A-Z]/g, "");
+    let seq = "", removed = 0;
+    for (const ch of letters) { if (IUPAC[ch]) seq += ch; else removed++; }
+    return { seq, header, records, removed };
+  }
+
+  const fmt = n => n.toLocaleString("en-US");
+  const L = () => st.seq.length;
+  // strand index (0-based, on displayed strand) -> input coordinate (1-based)
+  const origPos = (i, strand) => strand === "+" ? i + 1 : L() - i;
+  const rangeStr = (a, bExcl, strand) => strand === "+"
+    ? `${fmt(a + 1)}–${fmt(bExcl)}`
+    : `${fmt(L() - a)}–${fmt(L() - bExcl + 1)}`;
+  const showNt = c => el.rna.checked ? c.replace(/T/g, "U") : c;
+
+  // ---------- six-frame ORF scan ----------
+  function longestORFs() {
+    const out = [];
+    for (const strand of ["+", "-"]) {
+      const s = strand === "+" ? st.seq : st.rc;
+      for (let f = 0; f < 3; f++) {
+        let best = null, open = -1, stops = 0;
+        for (let i = f; i + 3 <= s.length; i += 3) {
+          const c = s.substr(i, 3), aa = translateCodon(c);
+          if (aa === "*") {
+            stops++;
+            if (open >= 0) {
+              const len = (i - open) / 3;
+              if (!best || len > best.len) best = { start: open, end: i + 3, len, closed: true };
+              open = -1;
+            }
+          } else if (c === "ATG" && open < 0) open = i;
+        }
+        if (open >= 0) {
+          const end = open + Math.floor((s.length - open) / 3) * 3;
+          const len = (end - open) / 3;
+          if (!best || len > best.len) best = { start: open, end, len, closed: false };
+        }
+        out.push({ strand, frame: f + 1, best, stops });
+      }
+    }
+    return out;
+  }
+
+  function renderORFTable(curStrand, curFrame) {
+    if (!st.seq) { el.orfTable.innerHTML = '<span class="meta">Paste a sequence to see ORFs.</span>'; return; }
+    const rows = longestORFs();
+    let h = '<table><thead><tr><th>Frame</th><th>Longest ORF</th><th>Input coords</th><th>Stops in frame</th><th></th></tr></thead><tbody>';
+    for (const r of rows) {
+      const active = r.strand === curStrand && r.frame === curFrame ? ' class="active"' : "";
+      const b = r.best;
+      h += `<tr${active}><td class="num">${r.strand}${r.frame}</td>`;
+      if (b) {
+        h += `<td class="num">${fmt(b.len)} aa${b.closed ? "" : ' <span class="warn">(open, no stop)</span>'}</td>`;
+        h += `<td class="num">${rangeStr(b.start, b.end, r.strand)}</td>`;
+      } else h += `<td class="meta">no ATG</td><td></td>`;
+      h += `<td class="num">${r.stops}</td>`;
+      h += `<td>${b ? `<button data-strand="${r.strand}" data-pos="${origPos(b.start, r.strand)}">Show</button>` : ""}</td></tr>`;
+    }
+    el.orfTable.innerHTML = h + "</tbody></table>";
+    el.orfTable.querySelectorAll("button").forEach(btn => btn.addEventListener("click", () => {
+      el.strand.value = btn.dataset.strand;
+      el.startMode.value = "custom";
+      el.customPos.value = btn.dataset.pos;
+      st.readthroughs = 0;
+      update();
+      $("resultPanel").scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+  }
+
+  // ---------- translation ----------
+  function getStart(s, strand) {
+    const mode = el.startMode.value, f = +el.frame.value - 1;
+    if (mode === "frame") return { start: f };
+    if (mode === "atg") {
+      for (let i = f; i + 3 <= s.length; i += 3) if (s.substr(i, 3) === "ATG") return { start: i };
+      return { error: `No ATG found in frame ${strand}${f + 1}.` };
+    }
+    const p = Math.round(+el.customPos.value);
+    if (!(p >= 1 && p <= s.length)) return { error: `Start position must be between 1 and ${fmt(s.length)}.` };
+    return { start: strand === "+" ? p - 1 : s.length - p };
+  }
+
+  function translate(s, start, maxRT) {
+    const codons = [];
+    let rtUsed = 0, terminated = false, seg = 0;
+    for (let i = start; i + 3 <= s.length; i += 3) {
+      const c = s.substr(i, 3), aa = translateCodon(c);
+      if (aa === "*") {
+        if (rtUsed < maxRT) { codons.push({ i, c, aa, type: "rt", seg }); rtUsed++; seg++; continue; }
+        codons.push({ i, c, aa, type: "stop", seg }); terminated = true; break;
+      }
+      codons.push({ i, c, aa, type: codons.length === 0 && c === "ATG" ? "start" : "", seg });
+    }
+    const last = codons[codons.length - 1];
+    const endExcl = last ? last.i + 3 : start;
+    const canRT = terminated && endExcl + 3 <= s.length;
+    const trailing = (s.length - start) % 3;
+    return { codons, rtUsed, terminated, canRT, endExcl, trailing };
+  }
+
+  function proteinOf(res) {
+    const r = el.rtRes.value;
+    return res.codons.map(c => c.type === "rt" ? r : c.aa).join("");
+  }
+  function mw(prot) {
+    let m = 0, n = 0;
+    for (const a of prot) if (MASS[a]) { m += MASS[a]; n++; }
+    return n ? m + 18.01528 : 0;
+  }
+
+  let last = null; // cache for actions
+
+  function render() {
+    const strand = el.strand.value;
+    const s = strand === "+" ? st.seq : st.rc;
+    const custom = el.startMode.value === "custom";
+    el.customWrap.style.opacity = custom ? 1 : .45;
+    el.customPos.disabled = !custom;
+    el.frame.disabled = custom;
+    el.customPos.max = st.seq.length || 1;
+
+    if (!st.seq) {
+      el.result.innerHTML = '<span class="meta">Paste a sequence to translate.</span>';
+      renderORFTable(); last = null; return;
+    }
+    const g = getStart(s, strand);
+    if (g.error) {
+      el.result.innerHTML = `<div class="status stop">${g.error}</div>`;
+      renderORFTable(strand, +el.frame.value); last = null; return;
+    }
+    const frameNum = (g.start % 3) + 1;
+    if (custom) el.frame.value = String(frameNum);
+    renderORFTable(strand, frameNum);
+
+    let res = translate(s, g.start, st.readthroughs);
+    if (res.rtUsed < st.readthroughs) { st.readthroughs = res.rtUsed; }
+    const prot = proteinOf(res);
+    const nAA = prot.replace(/\*$/, "").length;
+    const weight = mw(prot);
+    const hasX = /X/.test(prot);
+    last = { res, prot, strand, frameNum, s };
+
+    const lastC = res.codons[res.codons.length - 1];
+    let status;
+    if (!res.codons.length) status = `<div class="status stop">No complete codon after the start position.</div>`;
+    else if (res.terminated) status = `<div class="status stop">Terminated at <b>${showNt(lastC.c)}</b> (nt ${rangeStr(lastC.i, lastC.i + 3, strand)})${res.canRT ? "." : " — end of sequence, nothing left to read through."}</div>`;
+    else status = `<div class="status open">Reached the end of the sequence without a stop codon (open reading frame)${res.trailing ? `; ${res.trailing} trailing nt not translated` : ""}.</div>`;
+
+    const rtList = res.codons.filter(c => c.type === "rt");
+    const rtNote = rtList.length
+      ? `<div class="meta" style="margin:-4px 0 12px">Read-through stops: ${rtList.map((c, k) => `<b>${showNt(c.c)}</b> at nt ${rangeStr(c.i, c.i + 3, strand)} (aa ${res.codons.indexOf(c) + 1})`).join(" · ")}</div>`
+      : "";
+
+    let h = `
+      <div class="stats">
+        <div class="stat"><div class="k">Frame</div><div class="v">${strand}${frameNum}</div></div>
+        <div class="stat"><div class="k">Input coords</div><div class="v">${res.codons.length ? rangeStr(g.start, res.endExcl, strand) : "—"}</div></div>
+        <div class="stat"><div class="k">Length</div><div class="v">${fmt(nAA)} aa</div></div>
+        <div class="stat"><div class="k">Mol. weight</div><div class="v">${weight ? (weight / 1000).toFixed(2) + " kDa" : "—"}</div></div>
+        <div class="stat"><div class="k">Read-throughs</div><div class="v">${res.rtUsed}</div></div>
+      </div>
+      ${status}${rtNote}
+      ${hasX ? '<div class="meta warn" style="margin:-4px 0 12px">Contains X (ambiguous codon or read-through set to X); excluded from MW.</div>' : ""}
+      <div class="actions">
+        <button class="primary" id="btnRT" ${res.canRT ? "" : "disabled"}>Read through stop ▶</button>
+        <button id="btnUndo" ${res.rtUsed ? "" : "disabled"}>◀ Undo read-through</button>
+        <button id="btnReset" ${res.rtUsed ? "" : "disabled"}>Reset to first stop</button>
+        <span style="flex:1"></span>
+        <button id="btnCopyAA">Copy protein</button>
+        <button id="btnCopyNT">Copy DNA</button>
+        <button id="btnFasta">Download FASTA</button>
+      </div>
+      <div class="codons ${el.three.checked ? "three" : ""}" id="codonView">${codonHTML(res, strand)}</div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--start-bg);outline:1px solid var(--start)"></span>Start (ATG)</span>
+        <span><span class="sw" style="background:var(--stop-bg);outline:1px solid var(--stop)"></span>Terminating stop</span>
+        <span><span class="sw" style="background:var(--rt-bg);outline:1px dashed var(--rt)"></span>Read-through stop</span>
+        <span><span class="sw" style="background:var(--seg-b)"></span>Alternating shading = segments between read-throughs</span>
+      </div>
+      <h2 style="margin-top:18px">Protein</h2>
+      <pre class="prot" id="protOut">${protHTML(res)}</pre>`;
+    el.result.innerHTML = h;
+
+    $("btnRT").onclick = () => { st.readthroughs++; render(); scrollToEnd(); };
+    $("btnUndo").onclick = () => { st.readthroughs = Math.max(0, st.readthroughs - 1); render(); };
+    $("btnReset").onclick = () => { st.readthroughs = 0; render(); };
+    $("btnCopyAA").onclick = () => copy(prot, "Protein copied");
+    $("btnCopyNT").onclick = () => copy(showNt(s.slice(g.start, res.endExcl)), "DNA copied");
+    $("btnFasta").onclick = () => downloadFasta(g.start);
+  }
+
+  function codonHTML(res, strand) {
+    const per = +el.perRow.value, three = el.three.checked, rtR = el.rtRes.value;
+    let h = "";
+    res.codons.forEach((c, k) => {
+      if (k % per === 0) {
+        if (k) h += "</div>";
+        h += `<div class="crow"><div class="rowlab"><span>nt ${fmt(origPos(c.i, strand))}</span><span>aa ${fmt(k + 1)}</span></div>`;
+      }
+      const shown = c.type === "rt" ? rtR : c.aa;
+      const lab = three ? THREE[shown] : shown;
+      const cls = ["cod", c.seg % 2 ? "seg1" : "", c.type].join(" ");
+      const title = `aa ${k + 1} · nt ${rangeStr(c.i, c.i + 3, strand)} · ${showNt(c.c)} → ${THREE[c.aa]}${c.type === "rt" ? ` (read through as ${THREE[rtR]})` : ""}`;
+      h += `<div class="${cls}" title="${title}"><b>${lab}</b><i>${showNt(c.c)}</i></div>`;
+    });
+    return h ? h + "</div>" : "";
+  }
+
+  function protHTML(res) {
+    const rtR = el.rtRes.value;
+    let h = "";
+    res.codons.forEach((c, k) => {
+      if (k && k % 60 === 0) h += "\n";
+      else if (k && k % 10 === 0) h += " ";
+      if (c.type === "rt") h += `<span class="rtaa" title="read-through stop (${c.c})">${rtR}</span>`;
+      else if (c.type === "stop") h += `<span class="stopaa">*</span>`;
+      else h += c.aa;
+    });
+    return h || "—";
+  }
+
+  function scrollToEnd() {
+    const v = $("codonView");
+    if (v && v.lastElementChild) v.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function copy(text, msg) {
+    const done = () => toast(msg);
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, () => fallback());
+    else fallback();
+    function fallback() {
+      const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+      t.select(); try { document.execCommand("copy"); done(); } catch (e) { toast("Copy failed"); } t.remove();
+    }
+  }
+
+  function downloadFasta(start) {
+    if (!last) return;
+    const { res, prot, strand, frameNum } = last;
+    const name = (st.header.split(/\s+/)[0] || "translation").replace(/[^\w.\-]/g, "_");
+    const rtR = el.rtRes.value;
+    const hdr = `>${name}_frame${strand}${frameNum} nt=${rangeStr(start, res.endExcl, strand).replace("–", "-")} len=${prot.replace(/\*$/, "").length}aa readthrough=${res.rtUsed}${res.rtUsed ? `(${rtR})` : ""}`;
+    const body = prot.match(/.{1,60}/g)?.join("\n") || "";
+    const blob = new Blob([hdr + "\n" + body + "\n"], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${name}_${strand === "+" ? "p" : "m"}${frameNum}.fasta`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+
+  let tt;
+  function toast(m) { el.toast.textContent = m; el.toast.classList.add("show"); clearTimeout(tt); tt = setTimeout(() => el.toast.classList.remove("show"), 1400); }
+
+  // ---------- input handling ----------
+  function update() {
+    const p = parseInput(el.seqIn.value);
+    if (p.seq !== st.seq) st.readthroughs = 0;
+    st.seq = p.seq; st.rc = revComp(p.seq); st.header = p.header;
+    if (!p.seq) el.seqMeta.innerHTML = "No sequence.";
+    else {
+      const gc = (p.seq.match(/[GCS]/g) || []).length / p.seq.length * 100;
+      const amb = (p.seq.match(/[^ACGT]/g) || []).length;
+      el.seqMeta.innerHTML = [
+        p.header ? `<span>FASTA: <b>${escapeHtml(p.header)}</b></span>` : "",
+        `<span><b>${fmt(p.seq.length)}</b> nt</span>`,
+        `<span>GC <b>${gc.toFixed(1)}%</b></span>`,
+        amb ? `<span class="warn">${fmt(amb)} ambiguous base${amb > 1 ? "s" : ""}</span>` : "",
+        p.removed ? `<span class="warn">${fmt(p.removed)} invalid character${p.removed > 1 ? "s" : ""} removed</span>` : "",
+        p.records > 1 ? `<span class="warn">${p.records} FASTA records — using the first</span>` : ""
+      ].join("");
+    }
+    render();
+  }
+  const escapeHtml = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  let deb;
+  el.seqIn.addEventListener("input", () => { clearTimeout(deb); deb = setTimeout(update, 150); });
+  for (const k of ["strand", "frame", "startMode", "customPos"])
+    el[k].addEventListener("change", () => { st.readthroughs = 0; render(); });
+  for (const k of ["rtRes", "perRow", "three", "rna"]) el[k].addEventListener("change", render);
+
+  $("btnClear").onclick = () => { el.seqIn.value = ""; update(); el.seqIn.focus(); };
+  $("btnExample").onclick = () => {
+    // synthetic ORF: ATG ... TAG (amber) ... TGA ... TAA, so read-through can be demonstrated twice
+    el.seqIn.value = ">example_readthrough synthetic test sequence\n" +
+      "GCCGCCACCATGGGACAGACTGTGACCACCCCTCTGAGCCTGACCCTGGATCATTGGAAGGATGTGGAACGCCTGGCC\n" +
+      "CATAATCAGAGCGTGGATGTGAAGAAGCGGCGCTGGGTGACCTTCTGCAGCGCAGAATGGCCTACCTTCAATGTGGGC\n" +
+      "TGGCCTCGCGATGGCACCTTTAACCGCGATCTGATTACCCAGGTGAAGATCAAAGTGTTTAGCCCCGGCCCTCATGGC\n" +
+      "CATCCTGATCAGGTGCCCTATATTGTGACCTGGGAAGCACTGGCCTTCGATCCTCCCCCTTGGGTGAAGCCCTTCGTG\n" +
+      "CATCCTAAACCTCCCCCTCCACTGCCTCCCAGCGCACCTAGCCTGCCCCTGGAACCACCTCGCTCTACCCCCCCCCGC\n" +
+      "AGCTCCCTGTATCCTGCACTGACCCCCAGCCTGGGCGCTAAGCCCAAGCCCCAGGTGCTGAGCGATAGCGGAGGCCCC\n" +
+      "CTGATCGATCTGCTGACCGAAGATCCTCCCCCTTATAGAGATCCTCGCCCTCCTCCCAGCGATCGCGATGGAAATGGC\n" +
+      "GGCGAAGCAACCCCCGCAGGAGAAGCACCCGATCCCAGCCCTATGGCTAGCCGGCTGAGAGGTCGGCGCGAACCTCCT\n" +
+      "GTGGCCGATAGCACAACCAGCCAGGCCTTCCCCCTGCGCGCTGGAGGAAATGGCCAGCTGCAGTATTGGCCTTTTAGC\n" +
+      "AGCAGCGATCTGTAGAACTGGAAGAATAACAACCCCAGCTTCAGCGAGGATCCTGGAAAGCTGACCGCCCTGATTGAG\n" +
+      "AGCGTGCTGATCACCCATCAGCCCACATGGGATGATTGCCAGCAGCTGCTGGGCACCCTGCTGACCGGAGAAGAGAAG\n" +
+      "CAGCGGGTGCTGCTGGAAGCCCGCAAGTGAGCCGTGCGGGGCGATGATGGCCGCCCAACCCAGCTGCCCAATGAAGTG\n" +
+      "GACGCCGCCTTTCCCCTGGAGCGCCCCGATTGGGATTACACCACCCAGGCCGGACGGAATCATCTGGTGCATTATCGC\n" +
+      "CAGCTGCTGCTGGCCGGCCTGCAGAATGCCGGCCGGAGCCCCACCAATCTGGCCAAGGTGAAGGGCATCACCTAAGGC";
+    el.strand.value = "+"; el.frame.value = "1"; el.startMode.value = "atg";
+    update();
+  };
+
+  update();
+})();
+</script>
+</body>
+</html>
